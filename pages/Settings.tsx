@@ -1,52 +1,93 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { useTheme, Theme } from '../context/ThemeContext';
 import { TopBar, Button } from '../components/AndroidUI';
 
 const Settings: React.FC = () => {
   const { user, logout } = useAuth();
   const { settings } = useData();
+  const { theme, setTheme } = useTheme();
+
+  const themes: { id: Theme; name: string; bg: string; border: string }[] = [
+    { id: 'midnight', name: 'Midnight', bg: '#0f172a', border: 'border-slate-700' },
+    { id: 'daylight', name: 'Daylight', bg: '#f3f4f6', border: 'border-gray-200' },
+    { id: 'eclipse', name: 'Eclipse', bg: '#000000', border: 'border-zinc-800' },
+  ];
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div 
+      className="flex-1 bg-background text-text-main pb-20 overflow-y-auto"
+      style={{ paddingBottom: 'calc(7rem + env(safe-area-inset-bottom))' }}
+    >
       <TopBar title="Settings" />
       
-      <div className="p-6 space-y-8">
-        {/* User Profile Card */}
-        <div className="bg-surface rounded-2xl p-6 flex flex-col items-center">
-            <div className="w-20 h-20 bg-gray-600 rounded-full mb-4 flex items-center justify-center text-2xl font-bold text-white">
-                {user?.username[0].toUpperCase()}
+      <div className="p-5 space-y-6 max-w-lg mx-auto">
+        
+        {/* Profile Card */}
+        <div className="bg-surface rounded-3xl p-6 border border-border shadow-sm flex flex-col items-center text-center">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-primary to-purple-500 p-0.5 mb-4 shadow-lg shadow-primary/20">
+                <div className="w-full h-full bg-surface rounded-full flex items-center justify-center text-3xl font-bold text-text-main">
+                    {user?.username[0].toUpperCase()}
+                </div>
             </div>
-            <h2 className="text-xl font-semibold text-white">{user?.username}</h2>
-            <p className="text-gray-400">{user?.email}</p>
-            <div className="mt-4 px-3 py-1 bg-green-900/30 text-green-400 rounded-full text-xs border border-green-800">
-                {user?.status}
+            <h2 className="text-2xl font-bold tracking-tight">{user?.username}</h2>
+            <p className="text-text-sub font-medium">{user?.email}</p>
+        </div>
+
+        {/* Theme Switcher */}
+        <div>
+            <h3 className="text-sm font-bold text-text-sub uppercase tracking-wider mb-3 ml-2">Theme</h3>
+            <div className="grid grid-cols-3 gap-3">
+                {themes.map((t) => (
+                    <button
+                        key={t.id}
+                        onClick={() => setTheme(t.id)}
+                        className={`
+                            relative h-24 rounded-2xl border-2 transition-all flex flex-col items-center justify-end pb-3 gap-2 overflow-hidden tap-active
+                            ${theme === t.id ? 'border-primary ring-2 ring-primary/20' : 'border-border'}
+                        `}
+                        style={{ backgroundColor: t.bg }}
+                    >
+                        {/* Preview bubbles */}
+                        <div className="absolute top-2 left-2 right-2 flex flex-col gap-1.5 opacity-50 pointer-events-none">
+                            <div className="h-2 w-2/3 bg-current rounded-full opacity-20 self-start"></div>
+                            <div className="h-2 w-1/2 bg-current rounded-full opacity-40 self-end"></div>
+                        </div>
+
+                        <span className={`text-xs font-bold z-10 ${theme === t.id ? 'text-primary' : 'text-gray-400'}`}>{t.name}</span>
+                        
+                        {theme === t.id && (
+                            <div className="absolute top-2 right-2 w-3 h-3 bg-primary rounded-full shadow-sm" />
+                        )}
+                    </button>
+                ))}
             </div>
         </div>
 
-        {/* App Configs (Read-only from Sheet) */}
-        <div className="space-y-4">
-            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider ml-1">App Configuration</h3>
-            <div className="bg-surface/50 rounded-xl overflow-hidden divide-y divide-white/5 text-white">
-                <div className="p-4 flex justify-between">
-                    <span>Polling Interval</span>
-                    <span className="text-gray-400">{settings.polling_interval / 1000}s</span>
+        {/* Configuration */}
+        <div>
+            <h3 className="text-sm font-bold text-text-sub uppercase tracking-wider mb-3 ml-2">App Data</h3>
+            <div className="bg-surface rounded-3xl overflow-hidden border border-border shadow-sm">
+                <div className="p-4 flex justify-between items-center border-b border-border">
+                    <span className="font-semibold text-text-main">Sync Rate</span>
+                    <span className="text-xs font-bold bg-secondary px-3 py-1.5 rounded-full text-text-main">{settings.polling_interval / 1000}s</span>
                 </div>
-                <div className="p-4 flex justify-between">
-                    <span>Group Chats</span>
-                    <span className={settings.enable_groups ? "text-green-400" : "text-red-400"}>
-                        {settings.enable_groups ? "Enabled" : "Disabled"}
-                    </span>
+                <div className="p-4 flex justify-between items-center border-b border-border">
+                    <span className="font-semibold text-text-main">Groups</span>
+                    <div className={`w-8 h-4 rounded-full relative ${settings.enable_groups ? "bg-green-500/20" : "bg-red-500/20"}`}>
+                        <div className={`absolute top-0.5 w-3 h-3 rounded-full transition-all ${settings.enable_groups ? "right-0.5 bg-green-500" : "left-0.5 bg-red-500"}`} />
+                    </div>
                 </div>
-                 <div className="p-4 flex justify-between">
-                    <span>Max Msg Length</span>
-                    <span className="text-gray-400">{settings.max_message_length}</span>
+                 <div className="p-4 flex justify-between items-center">
+                    <span className="font-semibold text-text-main">Version</span>
+                    <span className="text-sm text-text-sub">v2.1.0</span>
                 </div>
             </div>
         </div>
 
-        <Button onClick={logout} variant="secondary" className="bg-red-900/20 text-red-400 hover:bg-red-900/30">
-            Log Out
+        <Button onClick={logout} variant="danger" className="mt-4">
+            Sign Out
         </Button>
       </div>
     </div>

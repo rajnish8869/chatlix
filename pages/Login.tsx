@@ -39,17 +39,19 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
-      <div className="w-full max-w-sm">
-        <h1 className="text-4xl font-bold mb-2 text-primary">SheetChat</h1>
-        <p className="text-gray-400 mb-8">
-            {isLogin ? "Welcome back! Sign in to continue." : "Create an account to get started."}
-        </p>
+    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-background transition-colors">
+      <div className="w-full max-w-sm flex flex-col gap-6">
+        <div className="text-center">
+            <h1 className="text-4xl font-extrabold mb-2 text-primary tracking-tight">SheetChat</h1>
+            <p className="text-text-sub font-medium">
+                {isLogin ? "Welcome back" : "Create your account"}
+            </p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Username</label>
+              <label className="block text-xs font-bold text-text-sub mb-1.5 ml-1 uppercase">Username</label>
               <Input 
                 type="text" 
                 value={username} 
@@ -60,7 +62,7 @@ const Login: React.FC = () => {
           )}
           
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Email</label>
+            <label className="block text-xs font-bold text-text-sub mb-1.5 ml-1 uppercase">Email</label>
             <Input 
               type="email" 
               value={email} 
@@ -70,7 +72,7 @@ const Login: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Password</label>
+            <label className="block text-xs font-bold text-text-sub mb-1.5 ml-1 uppercase">Password</label>
             <Input 
               type="password" 
               value={password} 
@@ -79,14 +81,14 @@ const Login: React.FC = () => {
             />
           </div>
 
-          {error && <p className="text-red-400 text-sm bg-red-900/10 p-2 rounded">{error}</p>}
+          {error && <p className="text-red-500 text-sm bg-red-500/10 p-3 rounded-xl border border-red-500/20">{error}</p>}
 
-          <Button type="submit" disabled={loading} className="mt-4">
+          <Button type="submit" disabled={loading} className="mt-4 shadow-xl shadow-primary/20">
             {loading ? (isLogin ? 'Signing in...' : 'Creating account...') : (isLogin ? 'Sign In' : 'Sign Up')}
           </Button>
         </form>
 
-        <div className="mt-8 text-center text-sm text-gray-400">
+        <div className="mt-4 text-center text-sm text-text-sub">
           <p>
             {isLogin ? "Don't have an account? " : "Already have an account? "}
             <button 

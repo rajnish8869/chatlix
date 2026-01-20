@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { TopBar, FAB } from '../components/AndroidUI';
+import { TopBar, FAB, Icons } from '../components/AndroidUI';
 import { useNavigate } from 'react-router-dom';
 import { Chat, Message } from '../types';
 
@@ -10,11 +10,15 @@ const ChatList: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   
-  // Pull to refresh state
+  // Search State
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Pull to refresh
   const [pullY, setPullY] = useState(0);
   const startY = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const PULL_THRESHOLD = 80;
+  const PULL_THRESHOLD = 90;
 
   useEffect(() => {
     refreshChats();
@@ -33,21 +37,19 @@ const ChatList: React.FC = () => {
     const diff = currentY - startY.current;
     
     if (diff > 0 && containerRef.current?.scrollTop === 0) {
-        // Resistance effect
-        setPullY(Math.min(diff * 0.5, PULL_THRESHOLD + 20));
+        setPullY(Math.min(diff * 0.45, PULL_THRESHOLD + 30));
     }
   };
 
   const handleTouchEnd = async () => {
     if (pullY > PULL_THRESHOLD) {
-        setPullY(PULL_THRESHOLD); // Snap to threshold
+        setPullY(PULL_THRESHOLD);
         await refreshChats();
     }
     setPullY(0);
     startY.current = 0;
   };
 
-  // Helper to get the actual last message, prioritizing local real-time data
   const getLastMessage = (chat: Chat): Message | undefined => {
     const localMsgs = messages[chat.chat_id];
     if (localMsgs && localMsgs.length > 0) {
@@ -61,20 +63,52 @@ const ChatList: React.FC = () => {
     return lastMsg.sender_id !== user.user_id && lastMsg.status !== 'read';
   };
 
+  const filteredChats = chats.filter(chat => {
+    const name = chat.name || `Chat ${chat.chat_id}`;
+    return name.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
   return (
-    <div className="min-h-screen bg-background pb-20 overflow-hidden flex flex-col">
+    <div 
+      className="flex-1 flex flex-col bg-background h-screen overflow-hidden"
+    >
       <TopBar 
-        title="Messages" 
-        actions={syncing && <span className="text-xs text-primary animate-pulse mr-2">Syncing...</span>}
+        title={
+          isSearchOpen ? (
+            <input 
+                autoFocus
+                type="text"
+                placeholder="Search conversations..."
+                className="w-full bg-transparent border-none focus:outline-none text-text-main text-lg placeholder-text-sub font-medium"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          ) : "Messages"
+        }
+        onBack={isSearchOpen ? () => { setIsSearchOpen(false); setSearchQuery(''); } : undefined}
+        actions={
+            !isSearchOpen ? (
+                <>
+                    {syncing && <div className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full mr-3"></div>}
+                    <button onClick={() => setIsSearchOpen(true)} className="p-2.5 rounded-full text-text-main hover:bg-surface/50 tap-active">
+                        <Icons.Search />
+                    </button>
+                </>
+            ) : (
+                <button onClick={() => setSearchQuery('')} className="p-2.5 rounded-full text-text-sub tap-active">
+                    <Icons.Close />
+                </button>
+            )
+        }
       />
 
       {/* Pull Indicator */}
       <div 
-        className="w-full flex justify-center overflow-hidden transition-all duration-300 ease-out"
-        style={{ height: `${pullY}px`, opacity: pullY > 0 ? 1 : 0 }}
+        className="w-full flex justify-center items-center overflow-hidden transition-all duration-300 ease-out absolute top-16 left-0 z-10 pointer-events-none"
+        style={{ height: `${pullY}px`, opacity: pullY > 0 ? (pullY / PULL_THRESHOLD) : 0 }}
       >
-        <div className="flex items-center text-primary text-sm font-bold">
-            {pullY > PULL_THRESHOLD ? 'Release to refresh' : 'Pull down'}
+        <div className="bg-surface shadow-lg rounded-full p-2">
+            <div className={`w-5 h-5 border-2 border-primary border-t-transparent rounded-full ${pullY >= PULL_THRESHOLD ? 'animate-spin' : ''}`} />
         </div>
       </div>
 
@@ -83,49 +117,65 @@ const ChatList: React.FC = () => {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar"
+        className="flex-1 overflow-y-auto px-4 pb-32 pt-2 no-scrollbar scroll-smooth"
       >
-        {chats.length === 0 && !syncing && (
-          <div className="text-center text-gray-500 mt-20">
-            No chats found. <br /> Tap + to start.
+        {filteredChats.length === 0 && !syncing && (
+          <div className="flex flex-col items-center justify-center h-[50vh] text-text-sub opacity-50">
+             <div className="w-16 h-16 bg-surface rounded-full flex items-center justify-center mb-4">
+                <Icons.Chat />
+             </div>
+             <span className="text-base font-medium">No conversations</span>
           </div>
         )}
 
-        {chats.map(chat => {
+        {filteredChats.map(chat => {
           const lastMsg = getLastMessage(chat);
           const unread = isChatUnread(chat, lastMsg);
+          const chatName = chat.name || `Chat ${chat.chat_id}`;
+          const initials = chatName.substring(0, 2).toUpperCase();
           
           return (
             <div 
               key={chat.chat_id}
               onClick={() => navigate(`/chat/${chat.chat_id}`)}
               className={`
-                p-4 rounded-xl active:bg-surface transition-all flex items-center gap-4 border border-transparent
-                ${unread ? 'bg-surface/80 border-primary/20 shadow-sm shadow-primary/5' : 'bg-surface/50'}
+                relative mb-3 p-4 rounded-[20px] tap-active transition-all cursor-pointer flex items-center gap-4 border
+                ${unread ? 'bg-surface border-border shadow-soft' : 'bg-transparent border-transparent hover:bg-surface/50'}
               `}
             >
-              <div className="relative">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                  {chat.name ? chat.name[0] : '#'}
+              {/* Avatar */}
+              <div className="relative flex-shrink-0">
+                <div className={`
+                    w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm
+                    ${unread ? 'bg-gradient-to-tr from-primary to-purple-500' : 'bg-surface-highlight text-text-sub'}
+                `}>
+                  {initials}
                 </div>
                 {unread && (
-                  <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-background shadow-sm" />
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-[3px] border-surface shadow-sm" />
                 )}
               </div>
               
+              {/* Content */}
               <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-baseline mb-1">
-                  <h3 className={`truncate ${unread ? 'font-bold text-white' : 'font-medium text-gray-200'}`}>
-                    {chat.name || `Chat ${chat.chat_id}`}
+                <div className="flex justify-between items-center mb-1">
+                  <h3 className={`truncate text-[17px] ${unread ? 'font-bold text-text-main' : 'font-semibold text-text-main/80'}`}>
+                    {chatName}
                   </h3>
-                  <span className={`text-xs ${unread ? 'text-primary font-bold' : 'text-gray-500'}`}>
+                  <span className={`text-[11px] font-medium ${unread ? 'text-primary' : 'text-text-sub/70'}`}>
                       {lastMsg ? new Date(lastMsg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
                   </span>
                 </div>
-                <p className={`text-sm truncate ${unread ? 'text-gray-100 font-medium' : 'text-gray-400'}`}>
-                  {lastMsg?.sender_id === user?.user_id && <span className="text-gray-500 mr-1">You:</span>}
-                  {lastMsg?.message || "No messages yet"}
-                </p>
+                <div className="flex items-center gap-1">
+                    {lastMsg?.sender_id === user?.user_id && (
+                        <span className={`flex-shrink-0 ${lastMsg?.status === 'read' ? 'text-primary' : 'text-text-sub'}`}>
+                            {lastMsg?.status === 'read' ? <Icons.DoubleCheck /> : <Icons.Check />}
+                        </span>
+                    )}
+                    <p className={`text-[14px] truncate leading-snug ${unread ? 'text-text-main font-medium' : 'text-text-sub'}`}>
+                    {lastMsg?.message || <span className="italic opacity-50">Start a conversation</span>}
+                    </p>
+                </div>
               </div>
             </div>
           );

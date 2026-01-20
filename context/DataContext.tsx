@@ -252,26 +252,58 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const newIds = new Set(serverMessages.map(m => m.message_id));
               const filteredCurrent = current.filter(m => !newIds.has(m.message_id));
               return { ...prev, [chatId]: [...serverMessages, ...filteredCurrent] };
-            } else if (afterTimestamp) {
-              // Delta Sync: Append newer messages
-              if (serverMessages.length === 0) return prev; // No changes
-              
-              const incomingIds = new Set(serverMessages.map(m => m.message_id));
-              const filteredCurrent = current.filter(m => !incomingIds.has(m.message_id));
-              const merged = [...filteredCurrent, ...serverMessages]; // current + new
-              return { ...prev, [chatId]: merged };
             } else {
-              // Full Refresh / Initial Load (Latest 20)
-              const incomingIds = new Set(serverMessages.map(m => m.message_id));
-              const pending = current.filter(m => (m.status === 'pending' || m.status === 'failed') && !incomingIds.has(m.message_id));
-              return { ...prev, [chatId]: [...serverMessages, ...pending] };
+               // Delta Sync OR Full Refresh
+               // We need to carefully merge to avoid duplicates with pending messages
+               const incomingIds = new Set(serverMessages.map(m => m.message_id));
+               const incomingSignatures = new Set(serverMessages.map(m => `${m.sender_id}_${m.message}`));
+
+               // Keep messages that are NOT in the new batch from server
+               const filteredCurrent = current.filter(m => {
+                   // Always remove if ID matches (it's an update of an existing message)
+                   if (incomingIds.has(m.message_id)) return false;
+                   
+                   // Heuristic: If we have a pending message that matches content/sender of an incoming message,
+                   // it means the server processed our message but we haven't received the sendMessage response yet.
+                   // We remove the pending one to avoid visual duplication.
+                   if (m.status === 'pending' && incomingSignatures.has(`${m.sender_id}_${m.message}`)) {
+                       return false;
+                   }
+
+                   return true;
+               });
+               
+               // If it's a delta sync (afterTimestamp), we usually append. 
+               // If full refresh, we normally replace, but here we merge to keep pending ones.
+               
+               // Combine: [Existing (filtered)] + [New from Server]
+               // But wait, full refresh (initial load) usually expects server messages to replace or be at top?
+               // Our logic: current messages are valid. Server messages are 'updates' or 'history'.
+               // If afterTimestamp is set, serverMessages are NEWER. 
+               // If neither set (Initial), serverMessages are LATEST 20.
+               
+               let merged: Message[];
+               if (afterTimestamp) {
+                   merged = [...filteredCurrent, ...serverMessages];
+               } else {
+                   // Initial Load: We want server messages + any local pending that aren't in server messages
+                   // filteredCurrent has pending messages (because we filtered out ID matches)
+                   // But filteredCurrent also has old messages.
+                   // For initial load, we usually trust serverMessages as the "base".
+                   const pendingOnly = current.filter(m => (m.status === 'pending' || m.status === 'failed') && !incomingIds.has(m.message_id) && !incomingSignatures.has(`${m.sender_id}_${m.message}`));
+                   merged = [...serverMessages, ...pendingOnly];
+                   // We need to resort just in case? Usually serverMessages are sorted. Pending are new.
+                   merged.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+               }
+               
+               return { ...prev, [chatId]: merged };
             }
           });
 
           // Process 'Delivered' receipts
           if (user && serverMessages.length > 0) {
               const myUnconfirmedMessages = serverMessages.filter(m => 
-                  m.sender_id !== user.user_id && m.status === 'sent'
+                  String(m.sender_id) !== String(user.user_id) && m.status === 'sent'
               );
               if (myUnconfirmedMessages.length > 0) {
                   const ids = myUnconfirmedMessages.map(m => m.message_id);
@@ -293,7 +325,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, isOffline]); 
 
   const sendMessage = async (chatId: string, text: string) => {
-    if (!user) return;
+    if (!user || !text.trim()) return;
 
     const tempId = `temp-${Date.now()}`;
     const tempMsg: Message = {

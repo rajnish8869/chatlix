@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
+import { ThemeProvider } from './context/ThemeContext';
 import Login from './pages/Login';
 import ChatList from './pages/ChatList';
 import ChatDetail from './pages/ChatDetail';
+import ChatInfo from './pages/ChatInfo';
 import Settings from './pages/Settings';
 import NewChat from './pages/NewChat';
 import { BottomNav } from './components/AndroidUI';
@@ -17,7 +19,7 @@ const AppLayout: React.FC = () => {
   const navigate = useNavigate();
 
   if (isLoading) {
-    return <div className="h-screen w-screen bg-background flex items-center justify-center">Loading...</div>;
+    return <div className="h-screen w-screen bg-background text-text-main flex items-center justify-center">Loading...</div>;
   }
 
   if (!user) {
@@ -34,14 +36,17 @@ const AppLayout: React.FC = () => {
   const showBottomNav = location.pathname === '/' || location.pathname === '/settings';
 
   return (
-    <div className="bg-background text-white min-h-screen">
-      <Routes>
-        <Route path="/" element={<ChatList />} />
-        <Route path="/new-chat" element={<NewChat />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/chat/:chatId" element={<ChatDetail />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+    <div className="bg-background text-text-main min-h-screen flex flex-col transition-colors duration-300">
+      <div className="flex-1 flex flex-col relative">
+        <Routes>
+          <Route path="/" element={<ChatList />} />
+          <Route path="/new-chat" element={<NewChat />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/chat/:chatId" element={<ChatDetail />} />
+          <Route path="/chat/:chatId/info" element={<ChatInfo />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </div>
       
       {showBottomNav && (
         <BottomNav activeTab={location.pathname === '/settings' ? 'settings' : 'chats'} onTabChange={handleTabChange} />
@@ -75,10 +80,12 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <DataProvider>
-        <HashRouter>
-            <AndroidBackButtonHandler />
-            <AppLayout />
-        </HashRouter>
+        <ThemeProvider>
+          <HashRouter>
+              <AndroidBackButtonHandler />
+              <AppLayout />
+          </HashRouter>
+        </ThemeProvider>
       </DataProvider>
     </AuthProvider>
   );
