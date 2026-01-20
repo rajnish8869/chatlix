@@ -17,7 +17,7 @@ const Settings: React.FC = () => {
 
   return (
     <div 
-      className="flex-1 bg-background text-text-main pb-20 overflow-y-auto"
+      className="flex-1 bg-background text-text-main pb-20 overflow-y-auto pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
       style={{ paddingBottom: 'calc(7rem + env(safe-area-inset-bottom))' }}
     >
       <TopBar title="Settings" />

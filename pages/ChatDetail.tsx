@@ -44,7 +44,7 @@ const MessageItem = React.memo(({
   };
 
   return (
-    <div className="px-4 msg-anim">
+    <div className="msg-anim pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))]">
       {showDate && (
         <div className="flex justify-center py-6">
           <span className="text-[10px] uppercase font-bold text-text-sub bg-surface/60 backdrop-blur-sm px-3 py-1 rounded-full tracking-widest shadow-sm">
@@ -122,9 +122,9 @@ const ChatDetail: React.FC = () => {
       setViewportHeight(h);
       
       if (prevViewportHeight.current - h > 150) {
-          // Keyboard detected (Shrink)
+          // Keyboard detected (Shrink) - Force absolute bottom scroll
           setTimeout(() => {
-              virtuosoRef.current?.scrollToIndex({ index: chatMessages.length - 1, align: 'end', behavior: 'auto' });
+              virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'auto' });
           }, 100);
       }
       prevViewportHeight.current = h;
@@ -143,9 +143,10 @@ const ChatDetail: React.FC = () => {
   useEffect(() => {
     if (chatMessages.length > prevMsgCount.current) {
         const lastMsg = chatMessages[chatMessages.length - 1];
+        // If I sent the message, scroll to bottom
         if (lastMsg && String(lastMsg.sender_id) === String(user?.user_id)) {
              setTimeout(() => {
-                 virtuosoRef.current?.scrollToIndex({ index: chatMessages.length - 1, align: 'end', behavior: 'smooth' });
+                 virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' });
              }, 50);
         }
     }
@@ -209,16 +210,14 @@ const ChatDetail: React.FC = () => {
         textareaRef.current.focus();
     }
     
-    virtuosoRef.current?.scrollToIndex({ index: chatMessages.length, align: 'end', behavior: 'smooth' });
+    // Immediate scroll on send
+    virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' });
     await sendMessage(chatId, text);
   };
 
   const handleScrollToBottom = () => {
-      // Use scrollToIndex with align: 'end' to ensure the last item is fully visible
-      // This forces Virtuoso to measure items if they haven't been rendered yet.
-      virtuosoRef.current?.scrollToIndex({ 
-          index: chatMessages.length - 1, 
-          align: 'end', 
+      virtuosoRef.current?.scrollTo({ 
+          top: 10000000, 
           behavior: 'smooth' 
       });
   };
@@ -283,7 +282,8 @@ const ChatDetail: React.FC = () => {
         <Virtuoso
           ref={virtuosoRef}
           key={chatId}
-          style={{ height: '100%' }}
+          // Added paddingBottom to style for visual breathing room
+          style={{ height: '100%', paddingBottom: '20px', boxSizing: 'border-box' }}
           data={chatMessages}
           startReached={handleStartReached}
           initialTopMostItemIndex={Math.max(0, chatMessages.length - 1)}
@@ -300,7 +300,6 @@ const ChatDetail: React.FC = () => {
           }}
           components={{
             Header: () => loadingTop ? <div className="text-center text-xs text-text-sub py-6">Loading history...</div> : <div className="h-6" />,
-            Footer: () => <div className="h-2" />
           }}
           itemContent={(index, msg) => {
             const isMe = String(msg.sender_id) === String(user?.user_id);
@@ -315,7 +314,11 @@ const ChatDetail: React.FC = () => {
       {/* Input Area */}
       <div 
         className="w-full bg-surface/90 backdrop-blur-lg border-t border-border p-3 transition-all z-40 flex-shrink-0"
-        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+        style={{ 
+            paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
+            paddingLeft: 'env(safe-area-inset-left)',
+            paddingRight: 'env(safe-area-inset-right)' 
+        }}
       >
         <div className="flex items-end gap-2 max-w-4xl mx-auto">
             <div className="flex-1 bg-surface-highlight rounded-[24px] border border-border focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-all flex items-center px-4 py-1.5 shadow-sm">

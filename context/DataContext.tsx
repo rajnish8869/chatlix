@@ -193,8 +193,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 res.data!.forEach(c => chatMap.set(c.chat_id, c));
                 
                 return Array.from(chatMap.values()).sort((a, b) => {
-                    const t1 = a.last_message?.timestamp || a.created_at;
-                    const t2 = b.last_message?.timestamp || b.created_at;
+                    const t1 = a.last_message?.timestamp || a.created_at || '';
+                    const t2 = b.last_message?.timestamp || b.created_at || '';
                     return new Date(t2).getTime() - new Date(t1).getTime();
                 });
             });
@@ -273,28 +273,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                    return true;
                });
                
-               // If it's a delta sync (afterTimestamp), we usually append. 
-               // If full refresh, we normally replace, but here we merge to keep pending ones.
-               
-               // Combine: [Existing (filtered)] + [New from Server]
-               // But wait, full refresh (initial load) usually expects server messages to replace or be at top?
-               // Our logic: current messages are valid. Server messages are 'updates' or 'history'.
-               // If afterTimestamp is set, serverMessages are NEWER. 
-               // If neither set (Initial), serverMessages are LATEST 20.
-               
                let merged: Message[];
                if (afterTimestamp) {
                    merged = [...filteredCurrent, ...serverMessages];
                } else {
                    // Initial Load: We want server messages + any local pending that aren't in server messages
                    // filteredCurrent has pending messages (because we filtered out ID matches)
-                   // But filteredCurrent also has old messages.
-                   // For initial load, we usually trust serverMessages as the "base".
                    const pendingOnly = current.filter(m => (m.status === 'pending' || m.status === 'failed') && !incomingIds.has(m.message_id) && !incomingSignatures.has(`${m.sender_id}_${m.message}`));
                    merged = [...serverMessages, ...pendingOnly];
-                   // We need to resort just in case? Usually serverMessages are sorted. Pending are new.
-                   merged.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                }
+               
+               // Robust Sort
+               merged.sort((a, b) => {
+                  const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+                  const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+                  return ta - tb;
+               });
                
                return { ...prev, [chatId]: merged };
             }

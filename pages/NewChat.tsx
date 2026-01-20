@@ -59,7 +59,7 @@ const NewChat: React.FC = () => {
       />
       
       {/* Search Bar */}
-      <div className="px-4 py-3 bg-background sticky top-16 z-10">
+      <div className="px-4 py-3 bg-background sticky top-16 z-10 pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))]">
          <div className="bg-surface border border-border rounded-xl px-4 py-3 flex items-center gap-2">
             <span className="text-text-sub"><Icons.Search /></span>
             <input 
@@ -72,7 +72,7 @@ const NewChat: React.FC = () => {
          </div>
       </div>
       
-      <div className="flex-1 px-4 pb-24 overflow-y-auto no-scrollbar">
+      <div className="flex-1 px-4 pb-24 overflow-y-auto no-scrollbar pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))]">
         {loading && <div className="text-center text-primary text-sm font-medium py-8 animate-pulse">Creating conversation...</div>}
         
         <h2 className="text-xs text-text-sub font-bold mb-4 mt-2 uppercase tracking-wider ml-2">Suggested</h2>
@@ -122,7 +122,13 @@ const NewChat: React.FC = () => {
       </div>
 
       {selectedIds.size > 0 && (
-          <div className="fixed bottom-6 right-5 z-40 animate-bounce-in">
+          <div 
+              className="fixed bottom-6 right-5 z-40 animate-bounce-in"
+              style={{
+                  bottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
+                  right: 'calc(1.25rem + env(safe-area-inset-right))'
+              }}
+          >
              <button 
                 onClick={handleCreate}
                 className="h-14 px-6 bg-primary text-primary-fg rounded-2xl shadow-glow flex items-center gap-3 font-bold tap-active"

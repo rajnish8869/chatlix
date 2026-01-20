@@ -32,7 +32,7 @@ export const TopBar: React.FC<{
     ${transparent ? 'bg-transparent' : 'bg-background/90 backdrop-blur-md border-b border-border'}
     ${className}
   `}>
-    <div className="h-16 flex items-center px-4 w-full gap-3">
+    <div className="h-16 flex items-center w-full gap-3 pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))]">
       {onBack && (
         <button onClick={onBack} className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center text-text-main hover:bg-surface/50 tap-active">
           <Icons.Back />
@@ -61,8 +61,11 @@ export const TopBar: React.FC<{
 export const FAB: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   <button 
     onClick={onClick}
-    className="fixed right-5 w-14 h-14 bg-primary text-primary-fg rounded-2xl shadow-glow flex items-center justify-center tap-active z-40 transition-transform duration-300 hover:scale-105"
-    style={{ bottom: 'calc(6rem + env(safe-area-inset-bottom))' }} 
+    className="fixed w-14 h-14 bg-primary text-primary-fg rounded-2xl shadow-glow flex items-center justify-center tap-active z-40 transition-transform duration-300 hover:scale-105"
+    style={{ 
+        bottom: 'calc(6rem + env(safe-area-inset-bottom))',
+        right: 'calc(1.25rem + env(safe-area-inset-right))' 
+    }} 
   >
     <Icons.Plus />
   </button>
@@ -73,10 +76,13 @@ export const ScrollDownFab: React.FC<{ onClick: () => void, visible: boolean }> 
   <button 
     onClick={onClick}
     className={`
-      fixed right-5 w-10 h-10 bg-surface/90 backdrop-blur text-primary border border-border rounded-full shadow-lg flex items-center justify-center tap-active z-30 transition-all duration-300
+      fixed w-10 h-10 bg-surface/90 backdrop-blur text-primary border border-border rounded-full shadow-lg flex items-center justify-center tap-active z-30 transition-all duration-300
       ${visible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}
     `}
-    style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
+    style={{ 
+        bottom: 'calc(5rem + env(safe-area-inset-bottom))',
+        right: 'calc(1.25rem + env(safe-area-inset-right))' 
+    }}
   >
     <Icons.ChevronDown />
   </button>
@@ -85,7 +91,7 @@ export const ScrollDownFab: React.FC<{ onClick: () => void, visible: boolean }> 
 // --- Bottom Navigation ---
 export const BottomNav: React.FC<{ activeTab: 'chats' | 'settings'; onTabChange: (t: 'chats' | 'settings') => void }> = ({ activeTab, onTabChange }) => (
   <div className="fixed bottom-0 left-0 w-full bg-surface/95 backdrop-blur-xl border-t border-border z-50 pb-[env(safe-area-inset-bottom)]">
-    <div className="h-[70px] flex items-center justify-around px-6">
+    <div className="h-[70px] flex items-center justify-around px-6 pl-[calc(1.5rem+env(safe-area-inset-left))] pr-[calc(1.5rem+env(safe-area-inset-right))]">
       <button 
         onClick={() => onTabChange('chats')}
         className={`flex flex-col items-center justify-center gap-1 w-20 py-2 rounded-2xl transition-all ${activeTab === 'chats' ? 'text-primary bg-primary/10' : 'text-text-sub hover:bg-surface-highlight'}`}
@@ -162,9 +168,10 @@ export const BottomSheet: React.FC<{
       {/* Sheet */}
       <div 
         className={`
-            bg-surface w-full max-w-md rounded-t-[32px] p-6 pb-[calc(2rem+env(safe-area-inset-bottom))] shadow-2xl border-t border-border transform transition-transform duration-300 pointer-events-auto
+            bg-surface w-full max-w-md rounded-t-[32px] p-6 shadow-2xl border-t border-border transform transition-transform duration-300 pointer-events-auto
             ${isOpen ? 'translate-y-0' : 'translate-y-full'}
         `}
+        style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
         onTransitionEnd={handleAnimationEnd}
       >
         <div className="w-12 h-1.5 bg-border rounded-full mx-auto mb-6 opacity-50" />

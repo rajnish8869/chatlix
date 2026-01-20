@@ -36,14 +36,16 @@ const ChatList: React.FC = () => {
     const currentY = e.touches[0].clientY;
     const diff = currentY - startY.current;
     
+    // Only allow pulling if we are at top and pulling down
     if (diff > 0 && containerRef.current?.scrollTop === 0) {
+        // Logarithmic resistance
         setPullY(Math.min(diff * 0.45, PULL_THRESHOLD + 30));
     }
   };
 
   const handleTouchEnd = async () => {
     if (pullY > PULL_THRESHOLD) {
-        setPullY(PULL_THRESHOLD);
+        setPullY(PULL_THRESHOLD); // Snap to threshold while loading
         await refreshChats();
     }
     setPullY(0);
@@ -105,9 +107,9 @@ const ChatList: React.FC = () => {
       {/* Pull Indicator */}
       <div 
         className="w-full flex justify-center items-center overflow-hidden transition-all duration-300 ease-out absolute top-16 left-0 z-10 pointer-events-none"
-        style={{ height: `${pullY}px`, opacity: pullY > 0 ? (pullY / PULL_THRESHOLD) : 0 }}
+        style={{ height: `${pullY}px`, opacity: pullY > 0 ? Math.min(1, pullY / (PULL_THRESHOLD * 0.8)) : 0 }}
       >
-        <div className="bg-surface shadow-lg rounded-full p-2">
+        <div className="bg-surface shadow-lg rounded-full p-2.5 border border-border">
             <div className={`w-5 h-5 border-2 border-primary border-t-transparent rounded-full ${pullY >= PULL_THRESHOLD ? 'animate-spin' : ''}`} />
         </div>
       </div>
@@ -117,14 +119,15 @@ const ChatList: React.FC = () => {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 overflow-y-auto px-4 pb-32 pt-2 no-scrollbar scroll-smooth"
+        className="flex-1 overflow-y-auto pb-32 pt-2 no-scrollbar scroll-smooth pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))]"
       >
         {filteredChats.length === 0 && !syncing && (
           <div className="flex flex-col items-center justify-center h-[50vh] text-text-sub opacity-50">
-             <div className="w-16 h-16 bg-surface rounded-full flex items-center justify-center mb-4">
+             <div className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mb-4 shadow-inner">
                 <Icons.Chat />
              </div>
-             <span className="text-base font-medium">No conversations</span>
+             <span className="text-lg font-medium">No conversations</span>
+             <span className="text-sm text-text-sub/70 mt-1">Tap + to start messaging</span>
           </div>
         )}
 

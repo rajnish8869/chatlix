@@ -31,10 +31,10 @@ const ChatInfo: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 bg-background text-text-main min-h-screen flex flex-col">
+    <div className="flex-1 bg-background text-text-main min-h-screen flex flex-col pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       <TopBar title="Chat Info" onBack={() => navigate(-1)} />
       
-      <div className="flex-1 overflow-y-auto pb-10">
+      <div className="flex-1 overflow-y-auto pb-10" style={{ paddingBottom: 'calc(2.5rem + env(safe-area-inset-bottom))' }}>
           
           {/* Header */}
           <div className="flex flex-col items-center py-10 border-b border-border/50">
