@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
 import { TopBar, FAB } from '../components/AndroidUI';
 import { useNavigate } from 'react-router-dom';
+import { Chat, Message } from '../types';
 
 const ChatList: React.FC = () => {
-  const { chats, refreshChats, syncing } = useData();
+  const { chats, refreshChats, syncing, messages } = useData();
+  const { user } = useAuth();
   const navigate = useNavigate();
   
   // Pull to refresh state
@@ -44,6 +47,20 @@ const ChatList: React.FC = () => {
     startY.current = 0;
   };
 
+  // Helper to get the actual last message, prioritizing local real-time data
+  const getLastMessage = (chat: Chat): Message | undefined => {
+    const localMsgs = messages[chat.chat_id];
+    if (localMsgs && localMsgs.length > 0) {
+      return localMsgs[localMsgs.length - 1];
+    }
+    return chat.last_message;
+  };
+
+  const isChatUnread = (chat: Chat, lastMsg?: Message) => {
+    if (!user || !lastMsg) return false;
+    return lastMsg.sender_id !== user.user_id && lastMsg.status !== 'read';
+  };
+
   return (
     <div className="min-h-screen bg-background pb-20 overflow-hidden flex flex-col">
       <TopBar 
@@ -74,30 +91,45 @@ const ChatList: React.FC = () => {
           </div>
         )}
 
-        {chats.map(chat => (
-          <div 
-            key={chat.chat_id}
-            onClick={() => navigate(`/chat/${chat.chat_id}`)}
-            className="bg-surface/50 p-4 rounded-xl active:bg-surface transition-colors flex items-center gap-4"
-          >
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-              {chat.name ? chat.name[0] : '#'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex justify-between items-baseline mb-1">
-                <h3 className="font-medium text-white truncate">
-                  {chat.name || `Chat ${chat.chat_id}`}
-                </h3>
-                <span className="text-xs text-gray-500">
-                    {chat.last_message ? new Date(chat.last_message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
-                </span>
+        {chats.map(chat => {
+          const lastMsg = getLastMessage(chat);
+          const unread = isChatUnread(chat, lastMsg);
+          
+          return (
+            <div 
+              key={chat.chat_id}
+              onClick={() => navigate(`/chat/${chat.chat_id}`)}
+              className={`
+                p-4 rounded-xl active:bg-surface transition-all flex items-center gap-4 border border-transparent
+                ${unread ? 'bg-surface/80 border-primary/20 shadow-sm shadow-primary/5' : 'bg-surface/50'}
+              `}
+            >
+              <div className="relative">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                  {chat.name ? chat.name[0] : '#'}
+                </div>
+                {unread && (
+                  <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-background shadow-sm" />
+                )}
               </div>
-              <p className="text-sm text-gray-400 truncate">
-                {chat.last_message?.message || "No messages yet"}
-              </p>
+              
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-baseline mb-1">
+                  <h3 className={`truncate ${unread ? 'font-bold text-white' : 'font-medium text-gray-200'}`}>
+                    {chat.name || `Chat ${chat.chat_id}`}
+                  </h3>
+                  <span className={`text-xs ${unread ? 'text-primary font-bold' : 'text-gray-500'}`}>
+                      {lastMsg ? new Date(lastMsg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}
+                  </span>
+                </div>
+                <p className={`text-sm truncate ${unread ? 'text-gray-100 font-medium' : 'text-gray-400'}`}>
+                  {lastMsg?.sender_id === user?.user_id && <span className="text-gray-500 mr-1">You:</span>}
+                  {lastMsg?.message || "No messages yet"}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <FAB onClick={() => navigate('/new-chat')} />

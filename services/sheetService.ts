@@ -9,7 +9,6 @@ async function fetchWithRetry<T>(
   retries = 2, 
   backoff = 300
 ): Promise<ApiResponse<T>> {
-  // 1. Validation: Check for common configuration errors
   if (!url || url.includes('INSERT_YOUR_WEB_APP_URL_HERE')) {
     return { success: false, error: "Setup Required: Please set GOOGLE_SCRIPT_URL in constants.ts" };
   }
@@ -22,46 +21,45 @@ async function fetchWithRetry<T>(
   }
 
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, { ...options, redirect: 'follow' });
     
-    // 2. Specific HTTP Error Handling
     if (response.status === 405) {
-      throw new Error("Method Not Allowed (405). This usually happens if you are using the Spreadsheet URL instead of the Script Web App URL.");
+      throw new Error("Method Not Allowed (405). Check URL.");
     }
 
     if (!response.ok) {
       throw new Error(`HTTP Error: ${response.status}`);
     }
 
-    // 3. Content Type Validation
-    const contentType = response.headers.get("content-type");
-    if (contentType && contentType.indexOf("application/json") === -1) {
-      const text = await response.text();
-      // If we get HTML (like a Google Sign-in page or Sheet UI)
-      if (text.trim().startsWith('<')) {
-        throw new Error("Invalid Response: Endpoint returned HTML. Check if the Web App is deployed as 'Anyone' (accessible without login).");
-      }
+    const text = await response.text();
+
+    if (text.trim().startsWith('<')) {
+        throw new Error("Invalid Response: Endpoint returned HTML.");
     }
 
-    const data = await response.json();
+    let data: any;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        throw new Error(`Failed to parse JSON response: ${text.substring(0, 50)}...`);
+    }
 
-    // 4. Backend Error Mapping (User Friendliness)
     if (!data.success && data.error) {
-       // Check for specific Google Apps Script error when sheets don't exist
        if (typeof data.error === 'string' && (data.error.includes("reading 'getDataRange'") || data.error.includes("null"))) {
-         data.error = "Backend Setup Incomplete: The required sheets (users, chats, etc.) do not exist. Please open your Google Apps Script editor and run the 'setup' function.";
+         data.error = "Backend Setup Incomplete.";
        }
     }
 
     return data;
   } catch (err) {
+    const msg = (err as Error).message;
     if (retries > 0) {
-      console.warn(`Retrying... attempts left: ${retries}. Error: ${(err as Error).message}`);
+      // Exponential backoff
       await new Promise(r => setTimeout(r, backoff));
       return fetchWithRetry(url, options, retries - 1, backoff * 2);
     }
-    console.error("Fetch failed after retries:", err);
-    return { success: false, error: (err as Error).message };
+    // Return a clean error object instead of throwing, to prevent app crashes
+    return { success: false, error: msg === 'Failed to fetch' ? 'Network Error' : msg };
   }
 }
 
@@ -91,12 +89,21 @@ export const sheetService = {
   fetchChats: (userId: string, lastUpdated?: string) => 
     postToSheet<Chat[]>('getChats', { user_id: userId, after_timestamp: lastUpdated }),
   
-  fetchMessages: (chatId: string, limit: number = 50, beforeTimestamp?: string) => 
-    postToSheet<Message[]>('getMessages', { chat_id: chatId, limit, before_timestamp: beforeTimestamp }),
+  // Updated to support afterTimestamp for delta sync
+  fetchMessages: (chatId: string, limit: number = 50, beforeTimestamp?: string, afterTimestamp?: string) => 
+    postToSheet<Message[]>('getMessages', { 
+      chat_id: chatId, 
+      limit, 
+      before_timestamp: beforeTimestamp,
+      after_timestamp: afterTimestamp 
+    }),
   
   sendMessage: (chatId: string, senderId: string, message: string, tempId?: string) => 
     postToSheet<Message>('sendMessage', { chat_id: chatId, sender_id: senderId, message, temp_id: tempId }),
     
+  updateMessageStatus: (chatId: string, messageIds: string[], status: 'delivered' | 'read') =>
+    postToSheet<void>('updateMessageStatus', { chat_id: chatId, message_ids: messageIds, status }),
+
   fetchSettings: () => 
     postToSheet<AppSettings>('getSettings'),
 
