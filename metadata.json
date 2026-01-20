@@ -1,0 +1,5 @@
+{
+  "name": "SheetChat Android",
+  "description": "An Android-first chat application using Google Sheets as a backend, featuring offline syncing, material design, and secure authentication.",
+  "requestFramePermissions": []
+}
