@@ -3,10 +3,13 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 
 // Suppress benign ResizeObserver error commonly triggered by virtualization
-const resizeObserverLoopErr = 'ResizeObserver loop completed with undelivered notifications.';
 window.addEventListener('error', (e) => {
-  if (e.message === resizeObserverLoopErr) {
+  if (
+    e.message === 'ResizeObserver loop completed with undelivered notifications.' ||
+    e.message === 'ResizeObserver loop limit exceeded'
+  ) {
     e.stopImmediatePropagation();
+    e.preventDefault();
   }
 });
 
