@@ -22,58 +22,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const heartbeatInterval = useRef<any>(null);
 
-  // --- Crypto Key Management ---
-  const ensureKeysExist = async (uid: string) => {
-    const privKey = localStorage.getItem(`chatlix_priv_${uid}`);
-    if (!privKey) {
-        console.log("Generating new E2EE keys...");
-        const keys = await generateKeyPair();
-        localStorage.setItem(`chatlix_priv_${uid}`, keys.privateKey);
-        // We will upload the public key to Firestore shortly
-        return keys.publicKey;
-    }
-    return null; // Keys exist
-  };
-
   // Firebase Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (currentUser) {
-            // 1. Optimistic User Set
-            const optimisticUser: User = {
+            // 1. Fetch Remote Profile First
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            let remoteData: User | null = null;
+            
+            try {
+                const snap = await getDoc(userDocRef);
+                if (snap.exists()) {
+                    remoteData = snap.data() as User;
+                }
+            } catch (e) {
+                console.error("Failed to fetch user profile", e);
+            }
+
+            // 2. Handle Key Synchronization
+            // - Check Local Storage
+            // - Check Remote Storage
+            // - Generate if missing
+            
+            let privKey = localStorage.getItem(`chatlix_priv_${currentUser.uid}`);
+            let pubKey = remoteData?.publicKey;
+
+            // Scenario: New Device / Cleared Storage -> Restore from Server
+            if (!privKey && remoteData?.privateKey) {
+                console.log("[Auth] Restoring keys from server...");
+                privKey = remoteData.privateKey;
+                localStorage.setItem(`chatlix_priv_${currentUser.uid}`, privKey);
+            }
+
+            // Scenario: First time setup or Total Loss -> Generate New
+            if (!privKey) {
+                console.log("[Auth] Generating new KeyPair...");
+                const keys = await generateKeyPair();
+                privKey = keys.privateKey;
+                pubKey = keys.publicKey;
+                
+                localStorage.setItem(`chatlix_priv_${currentUser.uid}`, privKey);
+                
+                // Upload both keys to server
+                await chatService.updateUserKeys(currentUser.uid, pubKey, privKey);
+            } else {
+                // We have a private key. Ensure public key is consistent on server.
+                // If the server doesn't have a public key, we upload the one we can (if we just generated it). 
+                // But if we just restored from local, we assume server logic is fine.
+                // If remoteData is missing completely (new user created via Login UI but doc not made yet? rare), we might need to update.
+            }
+
+            // 3. Set User State
+            const finalUser: User = {
                  user_id: currentUser.uid,
-                 username: currentUser.displayName || 'User',
+                 username: remoteData?.username || currentUser.displayName || 'User',
                  email: currentUser.email || '',
                  status: 'online',
                  last_seen: new Date().toISOString(),
-                 is_blocked: false
+                 is_blocked: remoteData?.is_blocked || false,
+                 publicKey: pubKey,
+                 privateKey: privKey // We keep it in state too just in case
             };
-            setUser(prev => {
-                if (prev?.user_id === currentUser.uid) return prev;
-                return optimisticUser;
-            });
+
+            setUser(finalUser);
             setIsLoading(false);
-
-            // 2. Ensure Crypto Keys
-            const newPubKey = await ensureKeysExist(currentUser.uid);
-            if (newPubKey) {
-                await chatService.updateUserPublicKey(currentUser.uid, newPubKey);
-            }
-
-            // 3. Sync Profile
-            getDoc(doc(db, 'users', currentUser.uid)).then(async (snap) => {
-                if (snap.exists()) {
-                    const data = snap.data() as User;
-                    setUser(prev => ({ ...prev, ...data, status: 'online' } as User));
-                    
-                    // If public key missing on server but exists locally (or just generated), upload it
-                    if (!data.publicKey && !newPubKey) {
-                         const keys = await generateKeyPair(); // Should not happen if local storage works, but fail-safe
-                         localStorage.setItem(`chatlix_priv_${currentUser.uid}`, keys.privateKey);
-                         await chatService.updateUserPublicKey(currentUser.uid, keys.publicKey);
-                    }
-                }
-            });
 
             // 4. Start Heartbeat (Real-time Presence)
             if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
@@ -95,9 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Offline on window close
     const handleUnload = () => {
         if (auth.currentUser) {
-            // Attempt to set offline. Note: unreliable in some browsers.
             navigator.sendBeacon && navigator.sendBeacon("...", "offline"); 
-            // We rely more on 'last_seen' timeout logic for other users.
         }
     };
     window.addEventListener('beforeunload', handleUnload);

@@ -92,6 +92,17 @@ export const chatService = {
       }
   },
 
+  updateUserKeys: async (userId: string, publicKey: string, privateKey: string) => {
+      try {
+          await updateDoc(doc(db, 'users', userId), { 
+              publicKey,
+              privateKey
+          });
+      } catch (e) {
+          console.error("Failed to update user keys", e);
+      }
+  },
+
   updateHeartbeat: async (userId: string) => {
       try {
           await updateDoc(doc(db, 'users', userId), {

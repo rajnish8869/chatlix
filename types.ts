@@ -7,6 +7,7 @@ export interface User {
   last_seen: string;
   is_blocked: boolean;
   publicKey?: string; // Base64 encoded JWK public key
+  privateKey?: string; // Base64 encoded JWK private key (Backup for multi-device)
 }
 
 export interface Chat {
