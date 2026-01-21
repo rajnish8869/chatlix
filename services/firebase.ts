@@ -16,16 +16,22 @@ const firebaseConfig = {
   appId: "1:508246099822:web:c633b2552ed2ad16e0e37f"
 };
 
+console.log("[Firebase] Initializing with config:", firebaseConfig.projectId);
+
 // Initialize Firebase
 // Check if app is already initialized to prevent errors in hot-reload environments
 const app = (getApps && getApps().length > 0) ? getApp() : initializeApp(firebaseConfig);
 
 const auth = getAuth(app);
 
-// Use initializeFirestore with persistentLocalCache to avoid legacy persistence warnings
-// and ensure robust offline support without multi-tab locks.
+// Use initializeFirestore with persistentLocalCache to avoid legacy persistence warnings.
+// Added experimentalForceLongPolling: true to fix "Failed to get document because the client is offline"
+// which is common in Android WebViews/Capacitor where WebSockets might be unstable.
 const db = initializeFirestore(app, {
-  localCache: persistentLocalCache()
+  localCache: persistentLocalCache(),
+  experimentalForceLongPolling: true
 });
+
+console.log("[Firebase] Services initialized (Auth, Firestore) with ForceLongPolling");
 
 export { app, auth, db };

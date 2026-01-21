@@ -30,27 +30,34 @@ export const chatService = {
   // --- AUTH ---
   
   login: async (email: string, password: string): Promise<ApiResponse<User>> => {
+    console.log("[ChatService] Login called for:", email);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
+      console.log("[ChatService] Auth successful. UID:", uid);
       
       try {
         const userDocRef = doc(db, 'users', uid);
+        console.log("[ChatService] Fetching user profile from Firestore...");
+        
+        // This might fail if offline and not cached
         const userDoc = await getDoc(userDocRef);
+        console.log("[ChatService] Profile fetch result - Exists:", userDoc.exists());
         
         if (userDoc.exists()) {
           const userData = userDoc.data() as User;
           
           // NON-BLOCKING: Update status to online in background
+          console.log("[ChatService] Triggering background online status update");
           updateDoc(userDocRef, {
               status: 'online',
               last_seen: new Date().toISOString()
-          }).catch(err => console.warn("Background status update failed", err));
+          }).catch(err => console.warn("[ChatService] Background status update failed:", err));
 
           return success({ ...userData, status: 'online' });
         } else {
             // Self-healing: Create default profile if missing
-            console.warn("User profile missing in Firestore, creating default profile...");
+            console.warn("[ChatService] User profile missing in Firestore, creating default profile...");
             const newUser: User = {
                 user_id: uid,
                 username: userCredential.user.displayName || email.split('@')[0],
@@ -60,12 +67,14 @@ export const chatService = {
                 is_blocked: false
             };
             // NON-BLOCKING: Create doc in background
-            setDoc(userDocRef, newUser).catch(err => console.warn("Background profile creation failed", err));
+            setDoc(userDocRef, newUser).catch(err => console.warn("[ChatService] Background profile creation failed:", err));
             
             return success(newUser);
         }
-      } catch (docError) {
-        console.warn("Failed to fetch/create user profile doc, using auth data", docError);
+      } catch (docError: any) {
+        console.warn("[ChatService] Failed to fetch/create user profile doc, using auth data. Error:", docError.code || docError.message);
+        
+        // Fallback for offline or error scenarios
         const fallbackUser: User = {
             user_id: uid,
             username: userCredential.user.displayName || 'User',
@@ -77,14 +86,17 @@ export const chatService = {
         return success(fallbackUser);
       }
     } catch (e: any) {
+      console.error("[ChatService] Login failed:", e);
       return fail(e.message);
     }
   },
 
   signup: async (username: string, email: string, password: string): Promise<ApiResponse<User>> => {
+    console.log("[ChatService] Signup called for:", username, email);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
+      console.log("[ChatService] Auth created. UID:", uid);
       
       const newUser: User = {
           user_id: uid,
@@ -96,14 +108,15 @@ export const chatService = {
       };
 
       // NON-BLOCKING: Write to Firestore in background. 
-      // Firestore SDK caches this locally immediately, so subsequent reads succeed even if network is slow.
-      setDoc(doc(db, 'users', uid), newUser).catch(e => console.error("Profile creation error", e));
+      console.log("[ChatService] Triggering background profile creation");
+      setDoc(doc(db, 'users', uid), newUser).catch(e => console.error("[ChatService] Profile creation error:", e));
       
       // Update Auth profile (usually fast)
       await updateProfile(userCredential.user, { displayName: username });
       
       return success(newUser);
     } catch (e: any) {
+      console.error("[ChatService] Signup failed:", e);
       return fail(e.message);
     }
   },

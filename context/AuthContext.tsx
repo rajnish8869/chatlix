@@ -21,7 +21,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Firebase Auth Listener
   useEffect(() => {
+    console.log("[AuthContext] Setting up onAuthStateChanged listener");
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        console.log("[AuthContext] Auth state changed. User:", currentUser?.uid);
+        
         if (currentUser) {
             // OPTIMISTIC UPDATE: 
             // Set user immediately from Auth data to unblock UI.
@@ -37,14 +40,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Only update state if meaningful change to prevent flickers
             setUser(prev => {
                 if (prev?.user_id === currentUser.uid) return prev;
+                console.log("[AuthContext] Setting optimistic user state");
                 return optimisticUser;
             });
             setIsLoading(false); // Unblock the app immediately
 
             // BACKGROUND SYNC:
             // Fetch extended profile from Firestore to get custom username/block status
+            console.log("[AuthContext] Starting background profile sync...");
             getDoc(doc(db, 'users', currentUser.uid))
             .then(userDoc => {
+                console.log("[AuthContext] Background profile sync result - Exists:", userDoc.exists());
                 if (userDoc.exists()) {
                     const firestoreData = userDoc.data() as User;
                     // Merge Firestore data with current state
@@ -55,12 +61,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 updateDoc(doc(db, 'users', currentUser.uid), {
                     status: 'online',
                     last_seen: new Date().toISOString()
-                }).catch(() => {});
+                }).catch(e => console.warn("[AuthContext] Background online status update failed", e));
             })
-            .catch(e => console.error("Error background fetching user profile", e));
+            .catch(e => {
+                // Downgrade offline errors to warning, as app is functional via optimistic state
+                if (e.message && e.message.includes('offline')) {
+                    console.warn("[AuthContext] Background sync skipped (Client Offline)");
+                } else {
+                    console.error("[AuthContext] Error background fetching user profile:", e);
+                }
+            });
 
         } else {
             // When currentUser is null (logged out)
+            console.log("[AuthContext] User logged out, clearing state");
             setUser(null);
             setIsLoading(false);
         }
