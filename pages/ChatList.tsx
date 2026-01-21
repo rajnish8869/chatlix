@@ -171,6 +171,7 @@ const ChatList: React.FC = () => {
               previewText = decryptedPreviews[lastMsg.message_id] || 'Encrypted message';
           }
           if (!lastMsg) previewText = 'Start a conversation';
+          if (lastMsg?.type === 'image') previewText = 'Photo';
 
           return (
             <ChatItemWrapper key={chat.chat_id} chatId={chat.chat_id}>
@@ -200,8 +201,10 @@ const ChatList: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-1.5">
                             {lastMsg?.sender_id === user?.user_id && (
-                                <span className={`flex-shrink-0 scale-75 ${lastMsg?.status === 'read' ? 'text-primary' : 'text-text-sub'}`}>
-                                    {lastMsg?.status === 'read' || lastMsg?.status === 'delivered' ? <Icons.DoubleCheck /> : <Icons.Check />}
+                                <span className="flex-shrink-0 scale-75">
+                                    {lastMsg?.status === 'sent' && <Icons.Check className="text-text-sub" />}
+                                    {lastMsg?.status === 'delivered' && <Icons.DoubleCheck className="text-text-sub" />}
+                                    {lastMsg?.status === 'read' && <Icons.DoubleCheck className="text-primary" />}
                                 </span>
                             )}
                             <p className={`text-[14px] truncate leading-relaxed ${unread ? 'text-text-main font-semibold' : 'text-text-sub opacity-80'} ${lastMsg?.type === 'encrypted' ? 'italic' : ''}`}>

@@ -88,10 +88,11 @@ const MessageItem = React.memo(({
               {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
             </span>
             {isMe && (
-              <span className="flex items-center scale-75">
-                {msg.status === 'pending' && <div className="w-2 h-2 rounded-full border-2 border-white/50 border-t-white animate-spin" />}
-                {msg.status === 'sent' && <Icons.Check />}
-                {(msg.status === 'delivered' || msg.status === 'read') && <Icons.DoubleCheck />}
+              <span className="flex items-center gap-0.5 ml-1">
+                {msg.status === 'pending' && <div className="w-2.5 h-2.5 rounded-full border-[1.5px] border-white/50 border-t-white animate-spin" />}
+                {msg.status === 'sent' && <Icons.Check className="w-3.5 h-3.5 text-white/60" />}
+                {msg.status === 'delivered' && <Icons.DoubleCheck className="w-3.5 h-3.5 text-white/60" />}
+                {msg.status === 'read' && <Icons.DoubleCheck className="w-3.5 h-3.5 text-cyan-300" />}
               </span>
             )}
             {msg.type === 'encrypted' && <span className="text-[8px] opacity-70"><Icons.Lock /></span>}

@@ -356,6 +356,18 @@ export const chatService = {
             const ref = doc(db, `chats/${chatId}/messages`, id);
             batch.update(ref, { status: status });
         });
+
+        // Also update the chat last_message if relevant to ensure list view is consistent
+        // We read the chat doc to check if we need to update its status.
+        const chatRef = doc(db, 'chats', chatId);
+        const chatSnap = await getDoc(chatRef);
+        if (chatSnap.exists()) {
+            const chatData = chatSnap.data();
+            if (chatData.last_message && messageIds.includes(chatData.last_message.message_id)) {
+                 batch.update(chatRef, { "last_message.status": status });
+            }
+        }
+
         await batch.commit();
       } catch (e) {
           console.error("Failed to update message status", e);
@@ -378,8 +390,21 @@ export const chatService = {
   
   markAs: async (chatId: string, messageId: string, status: 'delivered' | 'read') => {
       try {
+          // Update the message document
           await updateDoc(doc(db, `chats/${chatId}/messages`, messageId), { status });
-      } catch (e) {}
+          
+          // Check and update chat last_message if it matches
+          const chatRef = doc(db, 'chats', chatId);
+          const chatSnap = await getDoc(chatRef);
+          if (chatSnap.exists()) {
+              const chatData = chatSnap.data();
+              if (chatData.last_message && chatData.last_message.message_id === messageId) {
+                  await updateDoc(chatRef, { "last_message.status": status });
+              }
+          }
+      } catch (e) {
+        console.error("MarkAs failed", e);
+      }
   },
 
   fetchSettings: async (): Promise<ApiResponse<AppSettings>> => {
