@@ -7,7 +7,6 @@ import {
     getDocs, 
     query, 
     where, 
-    orderBy, 
     limit, 
     addDoc, 
     updateDoc, 
@@ -125,9 +124,12 @@ export const chatService = {
 
   fetchContacts: async (currentUserId: string): Promise<ApiResponse<User[]>> => {
     try {
-      // Order by username for better UX
-      const q = query(collection(db, 'users'), orderBy('username'), limit(50));
+      console.log("[ChatService] Fetching contacts (users collection)...");
+      // Removed orderBy('username') to prevent Index errors during initial setup.
+      // We perform client-side sorting instead.
+      const q = query(collection(db, 'users'), limit(100));
       const snapshot = await getDocs(q);
+      
       const users: User[] = [];
       snapshot.forEach(doc => {
           const data = doc.data() as User;
@@ -136,23 +138,19 @@ export const chatService = {
             users.push({ ...data, user_id: doc.id });
           }
       });
+      
+      console.log(`[ChatService] Fetched ${users.length} contacts`);
+      
+      // Client-side Sort
+      users.sort((a, b) => a.username.localeCompare(b.username));
+      
       return success(users);
     } catch (e: any) {
-      // Fallback if index is missing or orderBy fails
-      try {
-          const q = query(collection(db, 'users'), limit(50));
-          const snapshot = await getDocs(q);
-          const users: User[] = [];
-          snapshot.forEach(doc => {
-            if (doc.id !== currentUserId) {
-                const data = doc.data() as User;
-                users.push({ ...data, user_id: doc.id });
-            }
-          });
-          return success(users);
-      } catch (retryErr: any) {
-          return fail(retryErr.message);
+      console.error("[ChatService] Error fetching contacts:", e);
+      if (e.code === 'permission-denied') {
+          console.warn("Permission Denied: Check Firestore Rules for 'users' collection.");
       }
+      return fail(e.message);
     }
   },
 
@@ -193,8 +191,6 @@ export const chatService = {
   },
 
   subscribeToChats: (userId: string, callback: (chats: Chat[]) => void) => {
-      // FIX: Removed orderBy('updated_at', 'desc') to avoid needing a composite index.
-      // We query only by participants and sort client-side.
       const q = query(
           collection(db, 'chats'), 
           where('participants', 'array-contains', userId)
@@ -230,17 +226,17 @@ export const chatService = {
 
   subscribeToMessages: (chatId: string, limitCount: number, callback: (msgs: Message[]) => void) => {
       // Limit to last 100 messages for performance
+      // If we use orderBy, we might need an index. 
+      // For now, let's keep it. If it fails, check console.
       const qLimited = query(
           collection(db, `chats/${chatId}/messages`),
-          orderBy('timestamp', 'asc'),
+          // orderBy('timestamp', 'asc'), // Temporarily removed to ensure basic fetching works without index
           limit(100) 
       );
 
-      // includeMetadataChanges: true is CRITICAL for offline support. 
       return onSnapshot(qLimited, { includeMetadataChanges: true }, (snapshot) => {
           const msgs = snapshot.docs.map(doc => {
               const data = doc.data();
-              // Determine status based on metadata and data
               let status = data.status;
               if (doc.metadata.hasPendingWrites) {
                   status = 'pending';
@@ -252,6 +248,10 @@ export const chatService = {
                   status: status
               } as Message;
           });
+          
+          // Sort client-side to avoid index requirement errors on new deployments
+          msgs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
           callback(msgs);
       });
   },
