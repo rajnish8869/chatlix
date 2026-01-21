@@ -182,3 +182,59 @@ export const BottomSheet: React.FC<{
     </div>
   );
 };
+
+// --- Confirmation Modal ---
+export const ConfirmationModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  isDestructive?: boolean;
+}> = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", cancelText = "Cancel", isDestructive = false }) => {
+  const [visible, setVisible] = useState(false);
+  const [rendering, setRendering] = useState(isOpen);
+
+  useEffect(() => {
+    if (isOpen) {
+        setRendering(true);
+        // Small delay to allow render before transition
+        requestAnimationFrame(() => setVisible(true));
+    } else {
+        setVisible(false);
+        const timer = setTimeout(() => setRendering(false), 200);
+        return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  if (!rendering) return null;
+
+  return (
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 transition-opacity duration-200 ${visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className={`relative bg-surface w-full max-w-xs rounded-[32px] p-6 shadow-2xl border border-border/50 transform transition-all duration-200 ${visible ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}>
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${isDestructive ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'}`}>
+            {isDestructive ? <Icons.Trash /> : <Icons.Info />}
+        </div>
+        <h3 className="text-xl font-bold text-text-main mb-2 text-center">{title}</h3>
+        <p className="text-text-sub text-center mb-8 leading-relaxed text-sm">{message}</p>
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3.5 rounded-2xl font-bold text-text-main bg-surface-highlight hover:bg-surface-highlight/80 transition-colors tap-active text-sm"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={() => { onConfirm(); onClose(); }}
+            className={`flex-1 py-3.5 rounded-2xl font-bold text-white shadow-lg transition-transform tap-active text-sm flex items-center justify-center gap-2 ${isDestructive ? 'bg-red-500 shadow-red-500/30' : 'bg-primary shadow-primary/30'}`}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

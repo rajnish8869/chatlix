@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { TopBar, FAB, Icons } from '../components/AndroidUI';
+import { TopBar, FAB, Icons, ConfirmationModal } from '../components/AndroidUI';
 import { useNavigate } from 'react-router-dom';
 import { Chat, Message } from '../types';
 
@@ -17,6 +17,7 @@ const ChatList: React.FC = () => {
   // Selection State
   const [selectedChatIds, setSelectedChatIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedChatIds.size > 0;
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     refreshChats();
@@ -76,11 +77,15 @@ const ChatList: React.FC = () => {
       });
   };
 
-  const handleDeleteSelected = async () => {
-      if (confirm(`Delete ${selectedChatIds.size} chat(s)?`)) {
-          await deleteChats(Array.from(selectedChatIds));
-          setSelectedChatIds(new Set());
+  const handleDeleteSelected = () => {
+      if (selectedChatIds.size > 0) {
+          setShowDeleteModal(true);
       }
+  };
+
+  const confirmDelete = async () => {
+      await deleteChats(Array.from(selectedChatIds));
+      setSelectedChatIds(new Set());
   };
 
   const filteredChats = chats.filter(chat => getChatName(chat).toLowerCase().includes(searchQuery.toLowerCase()));
@@ -179,6 +184,16 @@ const ChatList: React.FC = () => {
         })}
       </div>
       <FAB onClick={() => navigate('/new-chat')} />
+
+      <ConfirmationModal 
+        isOpen={showDeleteModal} 
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+        title="Delete Chats?"
+        message={`Are you sure you want to delete ${selectedChatIds.size} selected chat(s)? This action cannot be undone.`}
+        confirmText="Delete"
+        isDestructive={true}
+      />
     </div>
   );
 };

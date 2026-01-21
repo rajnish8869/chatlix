@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { TopBar, Icons, BottomSheet, ScrollDownFab } from '../components/AndroidUI';
+import { TopBar, Icons, BottomSheet, ScrollDownFab, ConfirmationModal } from '../components/AndroidUI';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { Message, Chat } from '../types';
 
@@ -99,6 +99,7 @@ const ChatDetail: React.FC = () => {
   // Selection State
   const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedMsgIds.size > 0;
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -175,12 +176,16 @@ const ChatDetail: React.FC = () => {
       });
   };
 
-  const handleDelete = async () => {
-      if (!chatId) return;
-      if (confirm(`Delete ${selectedMsgIds.size} message(s)?`)) {
-          await deleteMessages(chatId, Array.from(selectedMsgIds));
-          setSelectedMsgIds(new Set());
+  const handleDelete = () => {
+      if (selectedMsgIds.size > 0) {
+          setShowDeleteModal(true);
       }
+  };
+
+  const confirmDelete = async () => {
+      if (!chatId) return;
+      await deleteMessages(chatId, Array.from(selectedMsgIds));
+      setSelectedMsgIds(new Set());
   };
 
   return (
@@ -271,6 +276,16 @@ const ChatDetail: React.FC = () => {
             </button>
         </div>
       </div>
+
+      <ConfirmationModal 
+        isOpen={showDeleteModal} 
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+        title="Delete Messages?"
+        message={`Are you sure you want to delete ${selectedMsgIds.size} selected message(s)? This action cannot be undone.`}
+        confirmText="Delete"
+        isDestructive={true}
+      />
     </div>
   );
 };
