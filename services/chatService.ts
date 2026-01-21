@@ -33,23 +33,40 @@ export const chatService = {
   login: async (email: string, password: string): Promise<ApiResponse<User>> => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const uid = userCredential.user.uid;
       
       try {
-        const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+        const userDocRef = doc(db, 'users', uid);
+        const userDoc = await getDoc(userDocRef);
         
         if (userDoc.exists()) {
           const userData = userDoc.data() as User;
           // Update status to online on login
-          await updateDoc(doc(db, 'users', userCredential.user.uid), {
+          await updateDoc(userDocRef, {
               status: 'online',
               last_seen: new Date().toISOString()
           });
           return success({ ...userData, status: 'online' });
+        } else {
+            // Self-healing: If Auth exists but Firestore doc is missing, create it.
+            // This prevents "invisible" users who can login but don't show up in contacts.
+            console.warn("User profile missing in Firestore, creating default profile...");
+            const newUser: User = {
+                user_id: uid,
+                username: userCredential.user.displayName || email.split('@')[0],
+                email: userCredential.user.email || email,
+                status: 'online',
+                last_seen: new Date().toISOString(),
+                is_blocked: false
+            };
+            await setDoc(userDocRef, newUser);
+            return success(newUser);
         }
       } catch (docError) {
-        console.warn("Failed to fetch user profile doc, using auth data", docError);
+        console.warn("Failed to fetch/create user profile doc, using auth data", docError);
+        // Fallback for offline or error scenarios
         const fallbackUser: User = {
-            user_id: userCredential.user.uid,
+            user_id: uid,
             username: userCredential.user.displayName || 'User',
             email: userCredential.user.email || '',
             status: 'online',
@@ -58,8 +75,6 @@ export const chatService = {
         };
         return success(fallbackUser);
       }
-      
-      return fail('User profile not found.');
     } catch (e: any) {
       return fail(e.message);
     }
@@ -92,17 +107,34 @@ export const chatService = {
 
   fetchContacts: async (currentUserId: string): Promise<ApiResponse<User[]>> => {
     try {
-      const q = query(collection(db, 'users'), limit(50));
+      // Order by username for better UX
+      const q = query(collection(db, 'users'), orderBy('username'), limit(50));
       const snapshot = await getDocs(q);
       const users: User[] = [];
       snapshot.forEach(doc => {
-          if (doc.id !== currentUserId) {
-            users.push(doc.data() as User);
+          // Ensure we don't include ourselves and valid data exists
+          const data = doc.data() as User;
+          if (doc.id !== currentUserId && data.username) {
+            users.push(data);
           }
       });
       return success(users);
     } catch (e: any) {
-      return fail(e.message);
+      // Fallback if index is missing (orderBy usually requires one if mixed with other filters)
+      // Retry without ordering
+      try {
+          const q = query(collection(db, 'users'), limit(50));
+          const snapshot = await getDocs(q);
+          const users: User[] = [];
+          snapshot.forEach(doc => {
+            if (doc.id !== currentUserId) {
+                users.push(doc.data() as User);
+            }
+          });
+          return success(users);
+      } catch (retryErr: any) {
+          return fail(retryErr.message);
+      }
     }
   },
 
@@ -169,9 +201,6 @@ export const chatService = {
 
   subscribeToMessages: (chatId: string, limitCount: number, callback: (msgs: Message[]) => void) => {
       // Limit to last 100 messages for performance
-      // Note: Firestore descending index is needed for 'limitToLast', but for simple ordered list, 
-      // we usually just load 'limit' with 'asc' if the list is small, or use descending + reverse.
-      // Here we assume standard 'asc' for conversation flow.
       const qLimited = query(
           collection(db, `chats/${chatId}/messages`),
           orderBy('timestamp', 'asc'),
@@ -179,8 +208,6 @@ export const chatService = {
       );
 
       // includeMetadataChanges: true is CRITICAL for offline support. 
-      // It fires the listener immediately when data is written locally (hasPendingWrites: true)
-      // and again when synced to server (hasPendingWrites: false).
       return onSnapshot(qLimited, { includeMetadataChanges: true }, (snapshot) => {
           const msgs = snapshot.docs.map(doc => {
               const data = doc.data();

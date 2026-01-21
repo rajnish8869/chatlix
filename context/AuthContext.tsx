@@ -10,7 +10,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{success: boolean, error?: string}>;
   signup: (username: string, email: string, password: string) => Promise<{success: boolean, error?: string}>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,7 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     }).catch(e => console.error("Error updating online status", e));
 
                 } else {
-                    // Fallback if doc missing
+                    // Fallback if doc missing (Note: chatService.login now self-heals, so this is rare)
                      setUser({
                          user_id: currentUser.uid,
                          username: currentUser.displayName || 'User',
@@ -58,11 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 });
             }
         } else {
-            // Set offline if we had a user
-            if (user) {
-                // Note: This often doesn't fire on tab close, but works on explicit logout
-                // Use 'onDisconnect' in Realtime Database for true presence, or Firestore listeners
-            }
+            // When currentUser is null (logged out)
             setUser(null);
         }
         setIsLoading(false);
@@ -81,16 +77,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
         if (user) {
-             // Set offline before signing out
+             // Try to set offline before signing out, but don't block indefinitely
              await updateDoc(doc(db, 'users', user.user_id), {
                 status: 'offline',
                 last_seen: new Date().toISOString()
-            }).catch(console.error);
+            }).catch(e => console.warn("Failed to set offline status on logout", e));
         }
         await signOut(auth);
-        setUser(null);
     } catch (e) {
         console.error("Logout failed", e);
+    } finally {
+        // CRITICAL: Always clear user state, even if Firebase errors out
+        setUser(null);
     }
   };
 

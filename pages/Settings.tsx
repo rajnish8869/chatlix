@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useTheme, Theme } from '../context/ThemeContext';
@@ -8,12 +8,19 @@ const Settings: React.FC = () => {
   const { user, logout } = useAuth();
   const { settings, isOffline } = useData();
   const { theme, setTheme } = useTheme();
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const themes: { id: Theme; name: string; bg: string; border: string }[] = [
     { id: 'midnight', name: 'Midnight', bg: '#0f172a', border: 'border-slate-700' },
     { id: 'daylight', name: 'Daylight', bg: '#f3f4f6', border: 'border-gray-200' },
     { id: 'eclipse', name: 'Eclipse', bg: '#000000', border: 'border-zinc-800' },
   ];
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    await logout();
+    // No need to setLoggingOut(false) as unmount happens immediately
+  };
 
   return (
     <div 
@@ -28,7 +35,7 @@ const Settings: React.FC = () => {
         <div className="bg-surface rounded-3xl p-6 border border-border shadow-sm flex flex-col items-center text-center">
             <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-primary to-purple-500 p-0.5 mb-4 shadow-lg shadow-primary/20">
                 <div className="w-full h-full bg-surface rounded-full flex items-center justify-center text-3xl font-bold text-text-main relative">
-                    {user?.username[0].toUpperCase()}
+                    {user?.username ? user.username[0].toUpperCase() : '?'}
                     <div className={`absolute bottom-1 right-1 w-5 h-5 rounded-full border-4 border-surface ${!isOffline ? 'bg-green-500' : 'bg-red-500'}`} />
                 </div>
             </div>
@@ -85,13 +92,13 @@ const Settings: React.FC = () => {
                 </div>
                  <div className="p-4 flex justify-between items-center">
                     <span className="font-semibold text-text-main">Version</span>
-                    <span className="text-sm text-text-sub">v2.3.0</span>
+                    <span className="text-sm text-text-sub">v2.3.1</span>
                 </div>
             </div>
         </div>
 
-        <Button onClick={logout} variant="danger" className="mt-4">
-            Sign Out
+        <Button onClick={handleLogout} variant="danger" className="mt-4" disabled={loggingOut}>
+            {loggingOut ? 'Signing Out...' : 'Sign Out'}
         </Button>
       </div>
     </div>
