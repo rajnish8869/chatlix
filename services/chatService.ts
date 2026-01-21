@@ -375,10 +375,10 @@ export const chatService = {
 
   markChatDelivered: async (chatId: string, userId: string) => {
     try {
-      // Find all messages sent by OTHERS that are currently 'sent' (not delivered yet)
+      // Find all messages that are currently 'sent' (not delivered yet).
+      // We filter sender_id in memory to avoid requiring a composite index [status, sender_id].
       const q = query(
         collection(db, `chats/${chatId}/messages`),
-        where('sender_id', '!=', userId),
         where('status', '==', 'sent')
       );
       
@@ -390,12 +390,18 @@ export const chatService = {
       const chatSnap = await getDoc(chatRef);
       const lastMsgId = chatSnap.exists() ? chatSnap.data()?.last_message?.message_id : null;
       let updateChatLastMessage = false;
+      let count = 0;
 
-      snapshot.docs.forEach((doc) => {
-        batch.update(doc.ref, { status: 'delivered' });
-        // If we are updating the message that is also the last_message, update chat doc too
-        if (lastMsgId === doc.id) updateChatLastMessage = true;
+      snapshot.docs.forEach((docSnap) => {
+        // Skip own messages
+        if (docSnap.data().sender_id === userId) return;
+
+        batch.update(docSnap.ref, { status: 'delivered' });
+        if (lastMsgId === docSnap.id) updateChatLastMessage = true;
+        count++;
       });
+      
+      if (count === 0) return;
 
       if (updateChatLastMessage) {
         batch.update(chatRef, { 'last_message.status': 'delivered' });
@@ -409,10 +415,10 @@ export const chatService = {
 
   markChatRead: async (chatId: string, userId: string) => {
     try {
-      // Find all messages sent by OTHERS that are NOT read (sent or delivered)
+      // Find all messages that are NOT read (sent or delivered).
+      // We filter sender_id in memory to avoid requiring a composite index [status, sender_id].
       const q = query(
         collection(db, `chats/${chatId}/messages`),
-        where('sender_id', '!=', userId),
         where('status', 'in', ['sent', 'delivered'])
       );
       
@@ -424,11 +430,18 @@ export const chatService = {
       const chatSnap = await getDoc(chatRef);
       const lastMsgId = chatSnap.exists() ? chatSnap.data()?.last_message?.message_id : null;
       let updateChatLastMessage = false;
+      let count = 0;
 
-      snapshot.docs.forEach((doc) => {
-        batch.update(doc.ref, { status: 'read' });
-        if (lastMsgId === doc.id) updateChatLastMessage = true;
+      snapshot.docs.forEach((docSnap) => {
+        // Skip own messages
+        if (docSnap.data().sender_id === userId) return;
+
+        batch.update(docSnap.ref, { status: 'read' });
+        if (lastMsgId === docSnap.id) updateChatLastMessage = true;
+        count++;
       });
+      
+      if (count === 0) return;
 
       if (updateChatLastMessage) {
         batch.update(chatRef, { 'last_message.status': 'read' });
