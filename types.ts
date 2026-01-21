@@ -1,3 +1,4 @@
+
 export interface User {
   user_id: string; // Matches Firebase Auth UID
   username: string;
@@ -5,6 +6,7 @@ export interface User {
   status: string;
   last_seen: string;
   is_blocked: boolean;
+  publicKey?: string; // Base64 encoded JWK public key
 }
 
 export interface Chat {
@@ -22,7 +24,7 @@ export interface Message {
   chat_id: string;
   sender_id: string;
   message: string;
-  type: 'text' | 'image' | 'system';
+  type: 'text' | 'image' | 'system' | 'encrypted';
   timestamp: string;
   status: 'sent' | 'delivered' | 'read' | 'pending' | 'failed'; 
 }

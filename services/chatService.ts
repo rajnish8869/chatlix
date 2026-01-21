@@ -1,3 +1,4 @@
+
 import { User, Chat, Message, AppSettings, ApiResponse, LogEvent } from '../types';
 import { 
     collection, 
@@ -33,56 +34,25 @@ export const chatService = {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
-      console.log("[ChatService] Auth successful. UID:", uid);
       
-      try {
-        const userDocRef = doc(db, 'users', uid);
-        console.log("[ChatService] Fetching user profile from Firestore...");
-        
-        // This might fail if offline and not cached
-        const userDoc = await getDoc(userDocRef);
-        console.log("[ChatService] Profile fetch result - Exists:", userDoc.exists());
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as User;
-          
-          // NON-BLOCKING: Update status to online in background
-          console.log("[ChatService] Triggering background online status update");
-          updateDoc(userDocRef, {
-              status: 'online',
-              last_seen: new Date().toISOString()
-          }).catch(err => console.warn("[ChatService] Background status update failed:", err));
-
-          return success({ ...userData, status: 'online' });
-        } else {
-            // Self-healing: Create default profile if missing
-            console.warn("[ChatService] User profile missing in Firestore, creating default profile...");
-            const newUser: User = {
-                user_id: uid,
-                username: userCredential.user.displayName || email.split('@')[0],
-                email: userCredential.user.email || email,
-                status: 'online',
-                last_seen: new Date().toISOString(),
-                is_blocked: false
-            };
-            // NON-BLOCKING: Create doc in background
-            setDoc(userDocRef, newUser).catch(err => console.warn("[ChatService] Background profile creation failed:", err));
-            
-            return success(newUser);
-        }
-      } catch (docError: any) {
-        console.warn("[ChatService] Failed to fetch/create user profile doc, using auth data. Error:", docError.code || docError.message);
-        
-        // Fallback for offline or error scenarios
-        const fallbackUser: User = {
+      const userDocRef = doc(db, 'users', uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as User;
+        return success({ ...userData, status: 'online' });
+      } else {
+         // Create default profile if missing
+         const newUser: User = {
             user_id: uid,
-            username: userCredential.user.displayName || 'User',
-            email: userCredential.user.email || '',
+            username: userCredential.user.displayName || email.split('@')[0],
+            email: userCredential.user.email || email,
             status: 'online',
             last_seen: new Date().toISOString(),
             is_blocked: false
-        };
-        return success(fallbackUser);
+         };
+         await setDoc(userDocRef, newUser);
+         return success(newUser);
       }
     } catch (e: any) {
       console.error("[ChatService] Login failed:", e);
@@ -91,11 +61,9 @@ export const chatService = {
   },
 
   signup: async (username: string, email: string, password: string): Promise<ApiResponse<User>> => {
-    console.log("[ChatService] Signup called for:", username, email);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
-      console.log("[ChatService] Auth created. UID:", uid);
       
       const newUser: User = {
           user_id: uid,
@@ -106,50 +74,69 @@ export const chatService = {
           is_blocked: false
       };
 
-      // NON-BLOCKING: Write to Firestore in background. 
-      console.log("[ChatService] Triggering background profile creation");
-      setDoc(doc(db, 'users', uid), newUser).catch(e => console.error("[ChatService] Profile creation error:", e));
-      
-      // Update Auth profile (usually fast)
+      await setDoc(doc(db, 'users', uid), newUser);
       await updateProfile(userCredential.user, { displayName: username });
       
       return success(newUser);
     } catch (e: any) {
-      console.error("[ChatService] Signup failed:", e);
       return fail(e.message);
     }
+  },
+
+  updateUserPublicKey: async (userId: string, publicKey: string) => {
+      try {
+          await updateDoc(doc(db, 'users', userId), { publicKey });
+      } catch (e) {
+          console.error("Failed to update public key", e);
+      }
+  },
+
+  updateHeartbeat: async (userId: string) => {
+      try {
+          await updateDoc(doc(db, 'users', userId), {
+              last_seen: new Date().toISOString(),
+              status: 'online'
+          });
+      } catch (e) {
+          // Ignore network errors for heartbeat
+      }
+  },
+
+  setUserOffline: async (userId: string) => {
+      try {
+          await updateDoc(doc(db, 'users', userId), {
+              status: 'offline',
+              last_seen: new Date().toISOString()
+          });
+      } catch (e) {
+          console.error("Failed to set offline", e);
+      }
   },
 
   // --- CONTACTS ---
 
   fetchContacts: async (currentUserId: string): Promise<ApiResponse<User[]>> => {
     try {
-      console.log("[ChatService] Fetching contacts (users collection)...");
-      // Removed orderBy('username') to prevent Index errors during initial setup.
-      // We perform client-side sorting instead.
+      // Fetch all users to get their latest status and public keys
       const q = query(collection(db, 'users'), limit(100));
       const snapshot = await getDocs(q);
       
       const users: User[] = [];
       snapshot.forEach(doc => {
-          const data = doc.data() as User;
           if (doc.id !== currentUserId) {
-            // Ensure user_id matches doc.id
-            users.push({ ...data, user_id: doc.id });
+            users.push({ ...doc.data(), user_id: doc.id } as User);
           }
       });
       
-      console.log(`[ChatService] Fetched ${users.length} contacts`);
-      
-      // Client-side Sort
-      users.sort((a, b) => a.username.localeCompare(b.username));
+      // Sort: Online first, then alphabetical
+      users.sort((a, b) => {
+          if (a.status === 'online' && b.status !== 'online') return -1;
+          if (a.status !== 'online' && b.status === 'online') return 1;
+          return a.username.localeCompare(b.username);
+      });
       
       return success(users);
     } catch (e: any) {
-      console.error("[ChatService] Error fetching contacts:", e);
-      if (e.code === 'permission-denied') {
-          console.warn("Permission Denied: Check Firestore Rules for 'users' collection.");
-      }
       return fail(e.message);
     }
   },
@@ -158,7 +145,6 @@ export const chatService = {
 
   createChat: async (userId: string, participants: string[]): Promise<ApiResponse<Chat>> => {
     try {
-      // Check for existing 1-on-1 chat
       if (participants.length === 2) {
           const q = query(
               collection(db, 'chats'), 
@@ -169,10 +155,7 @@ export const chatService = {
              const data = doc.data();
              return data.participants.length === 2 && data.participants.includes(participants.find(p => p !== userId));
           });
-          
-          if (existing) {
-              return success({ ...existing.data(), chat_id: existing.id } as Chat);
-          }
+          if (existing) return success({ ...existing.data(), chat_id: existing.id } as Chat);
       }
 
       const newChatData = {
@@ -191,93 +174,56 @@ export const chatService = {
   },
 
   subscribeToChats: (userId: string, callback: (chats: Chat[]) => void) => {
-      const q = query(
-          collection(db, 'chats'), 
-          where('participants', 'array-contains', userId)
-      );
-      
+      const q = query(collection(db, 'chats'), where('participants', 'array-contains', userId));
       return onSnapshot(q, (snapshot) => {
-          const chats = snapshot.docs.map(doc => ({
-              chat_id: doc.id,
-              ...doc.data()
-          } as Chat));
-          
-          // Client-side sorting (Newest first)
+          const chats = snapshot.docs.map(doc => ({ chat_id: doc.id, ...doc.data() } as Chat));
           chats.sort((a, b) => {
               const tA = new Date(a.updated_at || a.created_at || 0).getTime();
               const tB = new Date(b.updated_at || b.created_at || 0).getTime();
               return tB - tA;
           });
-
           callback(chats);
-      }, (error) => {
-          console.error("Error subscribing to chats:", error);
-          if (error.code === 'permission-denied') {
-              console.warn("Check Firestore Rules. Users must be allowed to read chats they are participants of.");
-          }
       });
   },
 
-  fetchChats: async (userId: string): Promise<ApiResponse<Chat[]>> => {
-      return success([]);
-  },
-  
   // --- MESSAGES ---
 
   subscribeToMessages: (chatId: string, limitCount: number, callback: (msgs: Message[]) => void) => {
-      // Limit to last 100 messages for performance
-      // If we use orderBy, we might need an index. 
-      // For now, let's keep it. If it fails, check console.
       const qLimited = query(
           collection(db, `chats/${chatId}/messages`),
-          // orderBy('timestamp', 'asc'), // Temporarily removed to ensure basic fetching works without index
           limit(100) 
       );
-
       return onSnapshot(qLimited, { includeMetadataChanges: true }, (snapshot) => {
-          const msgs = snapshot.docs.map(doc => {
-              const data = doc.data();
-              let status = data.status;
-              if (doc.metadata.hasPendingWrites) {
-                  status = 'pending';
-              }
-              
-              return {
-                  message_id: doc.id,
-                  ...data,
-                  status: status
-              } as Message;
-          });
+          const msgs = snapshot.docs.map(doc => ({
+              message_id: doc.id,
+              ...doc.data(),
+              status: doc.metadata.hasPendingWrites ? 'pending' : doc.data().status
+          } as Message));
           
-          // Sort client-side to avoid index requirement errors on new deployments
           msgs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
           callback(msgs);
       });
   },
 
-  sendMessage: async (chatId: string, senderId: string, text: string, tempId?: string): Promise<ApiResponse<Message>> => {
+  sendMessage: async (chatId: string, senderId: string, content: string, type: 'text' | 'encrypted' = 'text'): Promise<ApiResponse<Message>> => {
     try {
       const timestamp = new Date().toISOString();
       const msgData = {
           chat_id: chatId,
           sender_id: senderId,
-          message: text,
-          type: 'text',
+          message: content,
+          type: type,
           timestamp: timestamp,
           status: 'sent'
       };
 
-      // 1. Add Message
       const msgRef = await addDoc(collection(db, `chats/${chatId}/messages`), msgData);
       
-      // 2. Update Chat Metadata (last_message)
-      const chatRef = doc(db, 'chats', chatId);
-      // NON-BLOCKING: Update chat metadata in background
-      updateDoc(chatRef, {
+      // Update Chat Metadata (last_message)
+      updateDoc(doc(db, 'chats', chatId), {
           last_message: { ...msgData, message_id: msgRef.id },
           updated_at: timestamp
-      }).catch(e => console.warn("Failed to update chat metadata", e));
+      });
 
       return success({ ...msgData, message_id: msgRef.id } as Message);
     } catch (e: any) {
@@ -287,40 +233,28 @@ export const chatService = {
     
   updateMessageStatus: async (chatId: string, messageIds: string[], status: 'delivered' | 'read') => {
       if (messageIds.length === 0) return;
-
       try {
         const batch = writeBatch(db);
-        
         messageIds.forEach(id => {
             const ref = doc(db, `chats/${chatId}/messages`, id);
             batch.update(ref, { status: status });
         });
-
         await batch.commit();
       } catch (e) {
-          console.error("Failed to batch update message status", e);
+          console.error("Failed to update message status", e);
       }
+  },
+  
+  // New: Mark single message delivered/read in background
+  markAs: async (chatId: string, messageId: string, status: 'delivered' | 'read') => {
+      try {
+          await updateDoc(doc(db, `chats/${chatId}/messages`, messageId), { status });
+      } catch (e) {}
   },
 
   fetchSettings: async (): Promise<ApiResponse<AppSettings>> => {
-      try {
-        const docRef = doc(db, 'system', 'settings');
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-            return success(snap.data() as AppSettings);
-        }
-      } catch (e) {
-         // Silently fail to defaults if collection doesn't exist
-      }
-      return success({
-          max_message_length: 1000,
-          enable_groups: true,
-          maintenance_mode: false,
-          announcement: ""
-      });
+      return success( { max_message_length: 1000, enable_groups: true, maintenance_mode: false, announcement: "" });
   },
 
-  logEvent: async (event: LogEvent) => {
-      // Optional: Log to a 'logs' collection
-  }
+  logEvent: async (event: LogEvent) => {}
 };
