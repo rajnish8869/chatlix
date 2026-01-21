@@ -276,13 +276,59 @@ export const chatService = {
       });
   },
 
-  sendMessage: async (chatId: string, senderId: string, content: string, type: 'text' | 'encrypted' = 'text'): Promise<ApiResponse<Message>> => {
+  // Client-side compression to Base64 to avoid Firebase Storage (Free Solution)
+  uploadImage: async (chatId: string, file: File): Promise<string> => {
+      return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = (e) => {
+              const img = new Image();
+              img.src = e.target?.result as string;
+              img.onload = () => {
+                  const canvas = document.createElement('canvas');
+                  let width = img.width;
+                  let height = img.height;
+                  
+                  // Constraint: Firestore documents have a 1MB size limit.
+                  // We resize images to max 800px to ensure the Base64 string fits easily.
+                  const MAX_WIDTH = 800;
+                  const MAX_HEIGHT = 800;
+
+                  if (width > height) {
+                      if (width > MAX_WIDTH) {
+                          height *= MAX_WIDTH / width;
+                          width = MAX_WIDTH;
+                      }
+                  } else {
+                      if (height > MAX_HEIGHT) {
+                          width *= MAX_HEIGHT / height;
+                          height = MAX_HEIGHT;
+                      }
+                  }
+
+                  canvas.width = width;
+                  canvas.height = height;
+                  const ctx = canvas.getContext('2d');
+                  ctx?.drawImage(img, 0, 0, width, height);
+                  
+                  // Compress to JPEG with 0.5 quality
+                  // This typically yields a string size of ~50-100KB
+                  const dataUrl = canvas.toDataURL('image/jpeg', 0.5); 
+                  resolve(dataUrl);
+              };
+              img.onerror = (err) => reject(new Error("Failed to load image"));
+          };
+          reader.onerror = (err) => reject(new Error("Failed to read file"));
+      });
+  },
+
+  sendMessage: async (chatId: string, senderId: string, content: string, type: 'text' | 'encrypted' | 'image' = 'text'): Promise<ApiResponse<Message>> => {
     try {
       const timestamp = new Date().toISOString();
       const msgData = {
           chat_id: chatId,
           sender_id: senderId,
-          message: content,
+          message: content, // For type='image', this is the Base64 string
           type: type,
           timestamp: timestamp,
           status: 'sent'

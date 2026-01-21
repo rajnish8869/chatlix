@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { TopBar, Icons, ScrollDownFab, ConfirmationModal, Avatar } from '../components/AndroidUI';
+import { TopBar, Icons, ScrollDownFab, ConfirmationModal, Avatar, ImageViewer } from '../components/AndroidUI';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { Message } from '../types';
 
@@ -18,13 +18,13 @@ const MessageContent = ({ msg, decryptFn }: { msg: Message, decryptFn: any }) =>
         }
     }, [msg, decryptFn]);
 
-    return <p className="text-[15px] leading-[1.4] break-words whitespace-pre-wrap">{text}</p>;
+    return <p className="text-[15px] leading-[1.5] break-words whitespace-pre-wrap">{text}</p>;
 };
 
 const MessageItem = React.memo(({ 
-    msg, isMe, showDate, onLongPress, onClick, isSelected, decryptFn, senderName 
+    msg, isMe, showDate, onLongPress, onClick, isSelected, decryptFn, senderName, onImageClick 
 }: { 
-    msg: Message, isMe: boolean, showDate: boolean, onLongPress: (msg: Message) => void, onClick: (msg: Message) => void, isSelected: boolean, decryptFn: any, senderName?: string 
+    msg: Message, isMe: boolean, showDate: boolean, onLongPress: (msg: Message) => void, onClick: (msg: Message) => void, isSelected: boolean, decryptFn: any, senderName?: string, onImageClick: (url: string) => void
 }) => {
   const touchTimer = useRef<any>(undefined);
 
@@ -39,16 +39,16 @@ const MessageItem = React.memo(({
   };
 
   return (
-    <div className={`px-3 animate-fade-in ${isSelected ? 'bg-primary/10 -mx-3 px-6 py-2' : ''}`}>
+    <div className={`px-4 animate-fade-in transition-colors ${isSelected ? 'bg-primary/10 -mx-4 px-8 py-2' : ''}`}>
       {showDate && (
         <div className="flex justify-center py-6">
-          <span className="text-[11px] font-bold text-text-sub bg-surface-highlight/70 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm">
-            {new Date(msg.timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+          <span className="text-[10px] font-bold tracking-wide text-text-sub bg-surface/80 backdrop-blur border border-white/5 px-3 py-1 rounded-full shadow-sm">
+            {new Date(msg.timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
           </span>
         </div>
       )}
       <div 
-        className={`flex flex-col mb-1.5 ${isMe ? 'items-end' : 'items-start'}`}
+        className={`flex flex-col mb-2 ${isMe ? 'items-end' : 'items-start'}`}
         onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={handleTouchStart} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd}
         onClick={() => onClick(msg)}
       >
@@ -59,17 +59,31 @@ const MessageItem = React.memo(({
         )}
 
         <div className={`
-            relative max-w-[80%] px-4 py-2.5 shadow-sm active:scale-[0.98] transition-all
+            relative max-w-[80%] shadow-sm active:scale-[0.98] transition-all
             ${isMe 
-                ? 'bg-msg-me text-primary-fg rounded-[20px] rounded-tr-sm' 
-                : 'bg-msg-other text-text-main rounded-[20px] rounded-tl-sm'
+                ? 'bg-msg-me text-white rounded-[24px] rounded-tr-sm shadow-primary/20' 
+                : 'bg-msg-other text-text-main rounded-[24px] rounded-tl-sm border border-white/5'
             } 
             ${msg.status === 'failed' ? 'border-2 border-danger' : ''}
+            ${msg.type === 'image' ? 'p-1' : 'px-5 py-3'} 
           `}
         >
-          <MessageContent msg={msg} decryptFn={decryptFn} />
+          {msg.type === 'image' ? (
+              <img 
+                src={msg.message} 
+                alt="Attachment" 
+                className="rounded-[20px] max-w-full h-auto cursor-pointer" 
+                style={{ maxHeight: '300px' }}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onImageClick(msg.message);
+                }}
+              />
+          ) : (
+             <MessageContent msg={msg} decryptFn={decryptFn} />
+          )}
           
-          <div className={`text-[9px] mt-1 text-right flex items-center justify-end gap-1 ${isMe ? 'text-primary-fg/80' : 'text-text-sub'}`}>
+          <div className={`text-[9px] mt-1.5 text-right flex items-center justify-end gap-1 ${isMe ? 'text-white/70' : 'text-text-sub'} ${msg.type === 'image' ? 'pr-2 pb-1' : ''}`}>
             <span className="font-medium">
               {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
             </span>
@@ -80,7 +94,7 @@ const MessageItem = React.memo(({
                 {(msg.status === 'delivered' || msg.status === 'read') && <Icons.DoubleCheck />}
               </span>
             )}
-            {msg.type === 'encrypted' && <span className="text-[8px] opacity-70">🔒</span>}
+            {msg.type === 'encrypted' && <span className="text-[8px] opacity-70"><Icons.Lock /></span>}
           </div>
         </div>
       </div>
@@ -92,11 +106,17 @@ const ChatDetail: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { messages, loadMessages, sendMessage, chats, markMessagesRead, contacts, loadContacts, decryptContent, deleteMessages } = useData();
+  const { messages, loadMessages, sendMessage, sendImage, chats, markMessagesRead, contacts, loadContacts, decryptContent, deleteMessages } = useData();
   
   const [inputText, setInputText] = useState('');
   const [viewportHeight, setViewportHeight] = useState(window.visualViewport?.height || window.innerHeight);
   const [showScrollFab, setShowScrollFab] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // Image Viewer State
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerSrc, setViewerSrc] = useState('');
   
   const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedMsgIds.size > 0;
@@ -139,6 +159,18 @@ const ChatDetail: React.FC = () => {
     await sendMessage(chatId, text);
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0] && chatId) {
+          const file = e.target.files[0];
+          setIsUploading(true);
+          virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' });
+          await sendImage(chatId, file);
+          setIsUploading(false);
+          // Reset input
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+  };
+
   const getChatName = () => {
       if (currentChat?.type === 'group' && currentChat.name) return currentChat.name;
       return otherUser ? otherUser.username : "Chat";
@@ -149,7 +181,6 @@ const ChatDetail: React.FC = () => {
       return contact ? contact.username : 'Unknown';
   };
 
-  // Selection Logic
   const handleMessageClick = (msg: Message) => {
       if (isSelectionMode) toggleSelection(msg.message_id);
   };
@@ -174,16 +205,21 @@ const ChatDetail: React.FC = () => {
       setSelectedMsgIds(new Set());
   };
 
+  const openImage = (url: string) => {
+      setViewerSrc(url);
+      setViewerOpen(true);
+  };
+
   return (
     <div className="fixed inset-0 flex flex-col bg-background overflow-hidden chat-bg-pattern" style={{ height: `${viewportHeight}px` }}>
       
       {isSelectionMode ? (
         <TopBar 
-            className="z-30 flex-shrink-0 bg-surface text-text-main"
+            className="z-30 flex-shrink-0 bg-surface text-text-main shadow-md"
             title={`${selectedMsgIds.size} Selected`}
             onBack={() => setSelectedMsgIds(new Set())}
             actions={
-                <button onClick={() => setShowDeleteModal(true)} className="p-2 text-danger bg-danger/10 rounded-full">
+                <button onClick={() => setShowDeleteModal(true)} className="p-2 text-danger bg-danger/10 rounded-full transition-colors hover:bg-danger/20">
                     <Icons.Trash />
                 </button>
             }
@@ -192,13 +228,14 @@ const ChatDetail: React.FC = () => {
         <TopBar 
             className="z-30 flex-shrink-0"
             title={
-            <div className="flex items-center gap-3">
-                <Avatar name={getChatName()} size="sm" online={currentChat?.type === 'private' ? isOtherOnline : undefined} showStatus={false} />
+            <div className="flex items-center gap-3.5">
+                <Avatar name={getChatName()} size="sm" online={currentChat?.type === 'private' ? isOtherOnline : undefined} showStatus={currentChat?.type === 'private'} />
                 <div className="flex flex-col">
                     <span className="text-base font-bold truncate leading-tight">{getChatName()}</span>
                     {currentChat?.type === 'private' && (
-                        <span className={`text-[10px] font-medium flex items-center gap-1 ${isOtherOnline ? 'text-green-500' : 'text-text-sub'}`}>
-                            {isOtherOnline ? 'Active now' : 'Offline'}
+                        <span className={`text-[11px] font-medium flex items-center gap-1.5 transition-colors ${isOtherOnline ? 'text-emerald-500' : 'text-text-sub opacity-70'}`}>
+                            {isOtherOnline && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />}
+                            {isOtherOnline ? 'Online' : 'Offline'}
                         </span>
                     )}
                 </div>
@@ -236,6 +273,7 @@ const ChatDetail: React.FC = () => {
                     onLongPress={handleLongPress} onClick={handleMessageClick}
                     isSelected={selectedMsgIds.has(msg.message_id)}
                     decryptFn={decryptContent} senderName={senderName}
+                    onImageClick={openImage}
                 />
             );
           }}
@@ -243,17 +281,31 @@ const ChatDetail: React.FC = () => {
         <ScrollDownFab onClick={() => virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' })} visible={showScrollFab} />
       </div>
 
-      <div className="w-full bg-gradient-to-t from-background via-background/95 to-transparent pt-4 pb-2 px-3 flex-shrink-0 z-20">
-        <div className="flex items-end gap-2 max-w-4xl mx-auto bg-surface/80 backdrop-blur-xl p-2 rounded-[2rem] border border-white/5 shadow-2xl mb-[env(safe-area-inset-bottom)]">
+      <div className="w-full pt-2 pb-2 px-3 flex-shrink-0 z-20">
+        <div className="flex items-end gap-2 max-w-4xl mx-auto bg-surface/80 backdrop-blur-xl p-2 rounded-[28px] border border-white/10 shadow-lg mb-[env(safe-area-inset-bottom)]">
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileSelect} 
+                accept="image/*" 
+                className="hidden" 
+            />
+            <button 
+                onClick={() => fileInputRef.current?.click()} 
+                disabled={isUploading}
+                className="w-10 h-10 mb-[3px] ml-1 rounded-full flex items-center justify-center text-text-sub hover:bg-surface-highlight hover:text-primary transition-colors disabled:opacity-50"
+            >
+                {isUploading ? <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <Icons.PaperClip />}
+            </button>
             <textarea
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder="Type a message..."
                 rows={1}
-                className="flex-1 bg-transparent text-text-main text-[16px] border-none focus:ring-0 resize-none min-h-[44px] max-h-[120px] py-2.5 px-4 placeholder:text-text-sub/50"
+                className="flex-1 bg-transparent text-text-main text-[16px] border-none focus:ring-0 resize-none min-h-[48px] max-h-[120px] py-3 px-2 placeholder:text-text-sub/50"
                 style={{ height: 'auto' }}
             />
-            <button onClick={handleSend} disabled={!inputText.trim()} className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${inputText.trim() ? 'bg-primary text-white shadow-glow' : 'bg-surface-highlight text-text-sub'}`}>
+            <button onClick={handleSend} disabled={!inputText.trim()} className={`w-12 h-12 mb-[1px] rounded-full flex items-center justify-center transition-all duration-300 ${inputText.trim() ? 'bg-primary text-white shadow-glow rotate-0' : 'bg-surface-highlight text-text-sub rotate-90 scale-90 opacity-50'}`}>
               <Icons.Send />
             </button>
         </div>
@@ -264,9 +316,15 @@ const ChatDetail: React.FC = () => {
         onClose={() => setShowDeleteModal(false)}
         onConfirm={confirmDelete}
         title="Delete Messages?"
-        message={`Delete ${selectedMsgIds.size} messages?`}
+        message={`This will permanently remove ${selectedMsgIds.size} message(s).`}
         confirmText="Delete"
         isDestructive={true}
+      />
+      
+      <ImageViewer 
+        isOpen={viewerOpen} 
+        src={viewerSrc} 
+        onClose={() => setViewerOpen(false)} 
       />
     </div>
   );

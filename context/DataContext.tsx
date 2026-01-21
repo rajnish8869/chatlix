@@ -17,6 +17,7 @@ interface DataContextType {
   refreshChats: () => Promise<void>;
   loadMessages: (chatId: string, beforeTimestamp?: string) => Promise<void>;
   sendMessage: (chatId: string, text: string) => Promise<void>;
+  sendImage: (chatId: string, file: File) => Promise<void>;
   createChat: (participants: string[], groupName?: string) => Promise<string | null>;
   loadContacts: () => Promise<void>;
   retryFailedMessages: () => void;
@@ -230,6 +231,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await chatService.sendMessage(chatId, user.user_id, content, type);
   };
 
+  const sendImage = async (chatId: string, file: File) => {
+      if (!user) return;
+      try {
+          const downloadUrl = await chatService.uploadImage(chatId, file);
+          await chatService.sendMessage(chatId, user.user_id, downloadUrl, 'image');
+      } catch (e) {
+          console.error("Failed to send image", e);
+      }
+  };
+
   const markMessagesRead = async (chatId: string, messageIds: string[]) => {
       if (messageIds.length === 0) return;
       await chatService.updateMessageStatus(chatId, messageIds, 'read');
@@ -250,7 +261,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <DataContext.Provider value={{ 
         chats, messages, settings, syncing, isOffline, contacts, 
-        refreshChats, loadMessages, sendMessage, retryFailedMessages, 
+        refreshChats, loadMessages, sendMessage, sendImage, retryFailedMessages, 
         createChat, loadContacts, markMessagesRead, decryptContent,
         deleteChats, deleteMessages
     }}>
