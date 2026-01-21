@@ -43,7 +43,8 @@ const ChatList: React.FC = () => {
   };
 
   const getChatName = (chat: Chat) => {
-      if (chat.type === 'group' && chat.name && chat.name !== 'New Group') return chat.name;
+      if (chat.type === 'group') return chat.name || "Group Chat";
+      
       const otherId = chat.participants?.find(id => id !== user?.user_id);
       if (otherId) {
           const contact = contacts.find(c => c.user_id === otherId);

@@ -103,6 +103,18 @@ export const chatService = {
       }
   },
 
+  updateUserProfile: async (userId: string, data: { username?: string }) => {
+      try {
+          await updateDoc(doc(db, 'users', userId), data);
+          if (data.username && auth.currentUser) {
+              await updateProfile(auth.currentUser, { displayName: data.username });
+          }
+      } catch (e) {
+          console.error("Failed to update profile", e);
+          throw e;
+      }
+  },
+
   updateHeartbeat: async (userId: string) => {
       try {
           await updateDoc(doc(db, 'users', userId), {
@@ -174,9 +186,10 @@ export const chatService = {
 
   // --- CHATS ---
 
-  createChat: async (userId: string, participants: string[]): Promise<ApiResponse<Chat>> => {
+  createChat: async (userId: string, participants: string[], groupName?: string): Promise<ApiResponse<Chat>> => {
     try {
-      if (participants.length === 2) {
+      // If 1-on-1 and no group name forced, check for existing
+      if (participants.length === 2 && !groupName) {
           const q = query(
               collection(db, 'chats'), 
               where('participants', 'array-contains', userId)
@@ -189,12 +202,14 @@ export const chatService = {
           if (existing) return success({ ...existing.data(), chat_id: existing.id } as Chat);
       }
 
+      const isGroup = participants.length > 2 || !!groupName;
+
       const newChatData = {
-          type: participants.length > 2 ? 'group' : 'private',
+          type: isGroup ? 'group' : 'private',
           participants,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          name: participants.length > 2 ? 'New Group' : ''
+          name: groupName || (isGroup ? 'Group Chat' : '')
       };
 
       const docRef = await addDoc(collection(db, 'chats'), newChatData);

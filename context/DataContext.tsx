@@ -17,7 +17,7 @@ interface DataContextType {
   refreshChats: () => Promise<void>;
   loadMessages: (chatId: string, beforeTimestamp?: string) => Promise<void>;
   sendMessage: (chatId: string, text: string) => Promise<void>;
-  createChat: (participants: string[]) => Promise<string | null>;
+  createChat: (participants: string[], groupName?: string) => Promise<string | null>;
   loadContacts: () => Promise<void>;
   retryFailedMessages: () => void;
   markMessagesRead: (chatId: string, messageIds: string[]) => void;
@@ -189,10 +189,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Handled by real-time subscription
   }, []);
 
-  const createChat = async (participants: string[]): Promise<string | null> => {
+  const createChat = async (participants: string[], groupName?: string): Promise<string | null> => {
     if (!user) return null;
     const allParticipants = Array.from(new Set([...participants, user.user_id]));
-    const response = await chatService.createChat(user.user_id, allParticipants);
+    const response = await chatService.createChat(user.user_id, allParticipants, groupName);
     return response.success && response.data ? response.data.chat_id : null;
   };
 

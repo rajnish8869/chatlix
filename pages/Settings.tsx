@@ -1,14 +1,19 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useTheme, Theme } from '../context/ThemeContext';
-import { TopBar, Button } from '../components/AndroidUI';
+import { TopBar, Button, Icons, Input } from '../components/AndroidUI';
 
 const Settings: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateName } = useAuth();
   const { settings, isOffline } = useData();
   const { theme, setTheme } = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
+  
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   const themes: { id: Theme; name: string; bg: string; border: string }[] = [
     { id: 'midnight', name: 'Midnight', bg: '#0f172a', border: 'border-slate-700' },
@@ -20,6 +25,19 @@ const Settings: React.FC = () => {
     setLoggingOut(true);
     await logout();
     // No need to setLoggingOut(false) as unmount happens immediately
+  };
+
+  const startEdit = () => {
+      setEditName(user?.username || '');
+      setIsEditingName(true);
+  };
+
+  const saveName = async () => {
+      if(!editName.trim()) return;
+      setSavingName(true);
+      await updateName(editName.trim());
+      setSavingName(false);
+      setIsEditingName(false);
   };
 
   return (
@@ -39,7 +57,31 @@ const Settings: React.FC = () => {
                     <div className={`absolute bottom-1 right-1 w-5 h-5 rounded-full border-4 border-surface ${!isOffline ? 'bg-green-500' : 'bg-red-500'}`} />
                 </div>
             </div>
-            <h2 className="text-2xl font-bold tracking-tight">{user?.username}</h2>
+            
+            {isEditingName ? (
+                <div className="flex gap-2 items-center w-full max-w-[240px] mb-1">
+                    <Input 
+                        value={editName} 
+                        onChange={e => setEditName(e.target.value)} 
+                        className="text-center h-10 py-2 text-lg font-bold" 
+                        autoFocus
+                    />
+                    <button onClick={saveName} disabled={savingName} className="p-2 bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors">
+                        <Icons.Check />
+                    </button>
+                    <button onClick={() => setIsEditingName(false)} className="p-2 bg-surface-highlight text-text-sub rounded-full hover:bg-surface-highlight/80 transition-colors">
+                        <Icons.Close />
+                    </button>
+                </div>
+            ) : (
+                <div className="flex items-center gap-2 mb-1 group relative">
+                    <h2 className="text-2xl font-bold tracking-tight">{user?.username}</h2>
+                    <button onClick={startEdit} className="opacity-50 group-hover:opacity-100 p-1.5 hover:bg-surface-highlight rounded-full transition-all text-primary">
+                        <Icons.Edit />
+                    </button>
+                </div>
+            )}
+            
             <p className="text-text-sub font-medium">{user?.email}</p>
             <div className={`mt-2 px-3 py-1 rounded-full text-xs font-bold ${!isOffline ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
                 {isOffline ? 'OFFLINE MODE' : 'CONNECTED'}

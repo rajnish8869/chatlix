@@ -1,7 +1,8 @@
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { TopBar, Icons, FAB } from '../components/AndroidUI';
+import { TopBar, Icons, FAB, BottomSheet, Input, Button } from '../components/AndroidUI';
 
 const NewChat: React.FC = () => {
   const { contacts, loadContacts, createChat } = useData();
@@ -9,6 +10,10 @@ const NewChat: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  
+  // Group Name Modal State
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [groupName, setGroupName] = useState('');
 
   useEffect(() => {
     loadContacts();
@@ -24,11 +29,23 @@ const NewChat: React.FC = () => {
       });
   };
 
-  const handleCreate = async () => {
-    if (selectedIds.size === 0) return;
-    
+  const handleFabClick = () => {
+      if (selectedIds.size === 0) return;
+
+      if (selectedIds.size > 1) {
+          // Open Modal for Group Name
+          setGroupName('');
+          setShowNameModal(true);
+      } else {
+          // Direct 1-on-1
+          createConversation();
+      }
+  };
+
+  const createConversation = async (name?: string) => {
     setLoading(true);
-    const chatId = await createChat(Array.from(selectedIds));
+    setShowNameModal(false);
+    const chatId = await createChat(Array.from(selectedIds), name);
     setLoading(false);
     if (chatId) {
         navigate(`/chat/${chatId}`, { replace: true });
@@ -130,7 +147,7 @@ const NewChat: React.FC = () => {
               }}
           >
              <button 
-                onClick={handleCreate}
+                onClick={handleFabClick}
                 className="h-14 px-6 bg-primary text-primary-fg rounded-2xl shadow-glow flex items-center gap-3 font-bold tap-active"
              >
                 <Icons.Chat />
@@ -140,6 +157,32 @@ const NewChat: React.FC = () => {
              </button>
           </div>
       )}
+
+      {/* Group Name Modal */}
+      <BottomSheet isOpen={showNameModal} onClose={() => setShowNameModal(false)}>
+        <div className="flex flex-col gap-4">
+            <h3 className="text-xl font-bold text-text-main">Name your group</h3>
+            <p className="text-text-sub text-sm">Give this conversation a name so it's easier to find later.</p>
+            
+            <Input 
+                autoFocus
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                placeholder="e.g. Family Trip, Project Team"
+                className="mt-2"
+            />
+            
+            <div className="flex gap-3 mt-4">
+                <Button variant="secondary" onClick={() => setShowNameModal(false)}>Cancel</Button>
+                <Button 
+                    variant="primary" 
+                    onClick={() => createConversation(groupName.trim() || 'Group Chat')}
+                >
+                    Create Group
+                </Button>
+            </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 };

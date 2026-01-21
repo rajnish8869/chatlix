@@ -33,14 +33,24 @@ const MessageContent = ({ msg, decryptFn }: { msg: Message, decryptFn: any }) =>
 };
 
 const MessageItem = React.memo(({ 
-    msg, isMe, showDate, onLongPress, onClick, isSelected, decryptFn 
+    msg, isMe, showDate, onLongPress, onClick, isSelected, decryptFn, senderName 
 }: { 
-    msg: Message, isMe: boolean, showDate: boolean, onLongPress: (msg: Message) => void, onClick: (msg: Message) => void, isSelected: boolean, decryptFn: any 
+    msg: Message, isMe: boolean, showDate: boolean, onLongPress: (msg: Message) => void, onClick: (msg: Message) => void, isSelected: boolean, decryptFn: any, senderName?: string 
 }) => {
   const touchTimer = useRef<any>(undefined);
 
   const handleTouchStart = () => { touchTimer.current = setTimeout(() => onLongPress(msg), 500); };
   const handleTouchEnd = () => { if (touchTimer.current) clearTimeout(touchTimer.current); };
+
+  // Generate a consistent color based on the senderName for a bit of UI flair
+  const getNameColor = (name: string) => {
+    const colors = ['text-red-400', 'text-orange-400', 'text-amber-400', 'text-green-400', 'text-emerald-400', 'text-teal-400', 'text-cyan-400', 'text-sky-400', 'text-blue-400', 'text-indigo-400', 'text-violet-400', 'text-purple-400', 'text-fuchsia-400', 'text-pink-400', 'text-rose-400'];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
 
   return (
     <div className={`msg-anim pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] transition-colors ${isSelected ? 'bg-primary/10 py-1' : ''}`}>
@@ -56,6 +66,12 @@ const MessageItem = React.memo(({
         onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={handleTouchStart} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd}
         onClick={() => onClick(msg)}
       >
+        {senderName && (
+             <span className={`text-[11px] font-bold mb-1 ml-3 block max-w-[80%] truncate ${getNameColor(senderName)}`}>
+                {senderName}
+             </span>
+        )}
+
         <div className={`
             relative max-w-[82%] px-4 py-3 shadow-sm min-h-[44px] cursor-pointer active:scale-95 transition-transform duration-100
             ${isSelected ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}
@@ -153,6 +169,11 @@ const ChatDetail: React.FC = () => {
       return otherUser ? otherUser.username : "Chat";
   };
 
+  const getSenderName = (senderId: string) => {
+      const contact = contacts.find(c => c.user_id === senderId);
+      return contact ? contact.username : 'Unknown';
+  };
+
   // Selection Logic
   const handleMessageClick = (msg: Message) => {
       if (isSelectionMode) {
@@ -242,6 +263,14 @@ const ChatDetail: React.FC = () => {
           itemContent={(index, msg) => {
             const isMe = String(msg.sender_id) === String(user?.user_id);
             const showDate = index === 0 || msg.timestamp.substring(0,10) !== chatMessages[index-1]?.timestamp.substring(0,10);
+            
+            // Group Chat Name Logic
+            const isGroup = currentChat?.type === 'group';
+            const prevMsg = chatMessages[index - 1];
+            // Show name if: Group Chat AND Not Me AND (First msg OR Different Sender from prev OR Date changed)
+            const showName = isGroup && !isMe && (!prevMsg || String(prevMsg.sender_id) !== String(msg.sender_id) || showDate);
+            const senderName = showName ? getSenderName(msg.sender_id) : undefined;
+
             return (
                 <MessageItem 
                     msg={msg} 
@@ -251,6 +280,7 @@ const ChatDetail: React.FC = () => {
                     onClick={handleMessageClick}
                     isSelected={selectedMsgIds.has(msg.message_id)}
                     decryptFn={decryptContent} 
+                    senderName={senderName}
                 />
             );
           }}

@@ -13,6 +13,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{success: boolean, error?: string}>;
   signup: (username: string, email: string, password: string) => Promise<{success: boolean, error?: string}>;
   logout: () => Promise<void>;
+  updateName: (name: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -128,8 +129,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
+  const updateName = async (name: string) => {
+    if (!user) return;
+    await chatService.updateUserProfile(user.user_id, { username: name });
+    setUser(prev => prev ? { ...prev, username: name } : null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateName }}>
       {children}
     </AuthContext.Provider>
   );
