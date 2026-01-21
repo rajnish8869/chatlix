@@ -1,6 +1,11 @@
 import * as firebaseApp from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache } from "firebase/firestore";
+
+// Workaround for TypeScript error "Module 'firebase/app' has no exported member..."
+// This can occur if type definitions are mismatched or in certain module resolution contexts.
+const firebaseAppModule = firebaseApp as any;
+const { initializeApp, getApps, getApp } = firebaseAppModule.default || firebaseAppModule;
 
 const firebaseConfig = {
   apiKey: "AIzaSyC8Usjvsc9urqgVMaU-j4chKvtzHRP55L0",
@@ -12,26 +17,15 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-// Use type casting to avoid "Module has no exported member" errors which can occur
-// due to type definition conflicts (e.g. v8 types vs v9 runtime)
-const api = firebaseApp as any;
-
-const app = (api.getApps && api.getApps().length > 0) 
-  ? api.getApp() 
-  : api.initializeApp(firebaseConfig);
+// Check if app is already initialized to prevent errors in hot-reload environments
+const app = (getApps && getApps().length > 0) ? getApp() : initializeApp(firebaseConfig);
 
 const auth = getAuth(app);
-const db = getFirestore(app);
 
-// Enable offline persistence
-enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code == 'failed-precondition') {
-        // Multiple tabs open, persistence can only be enabled in one tab at a a time.
-        console.warn('Firebase persistence failed: multiple tabs open');
-    } else if (err.code == 'unimplemented') {
-        // The current browser does not support all of the features required to enable persistence
-        console.warn('Firebase persistence not supported');
-    }
+// Use initializeFirestore with persistentLocalCache to avoid legacy persistence warnings
+// and ensure robust offline support without multi-tab locks.
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache()
 });
 
 export { app, auth, db };

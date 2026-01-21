@@ -12,8 +12,7 @@ import {
     addDoc, 
     updateDoc, 
     onSnapshot,
-    writeBatch,
-    serverTimestamp
+    writeBatch
 } from 'firebase/firestore';
 import { 
     signInWithEmailAndPassword, 
@@ -41,15 +40,16 @@ export const chatService = {
         
         if (userDoc.exists()) {
           const userData = userDoc.data() as User;
-          // Update status to online on login
-          await updateDoc(userDocRef, {
+          
+          // NON-BLOCKING: Update status to online in background
+          updateDoc(userDocRef, {
               status: 'online',
               last_seen: new Date().toISOString()
-          });
+          }).catch(err => console.warn("Background status update failed", err));
+
           return success({ ...userData, status: 'online' });
         } else {
-            // Self-healing: If Auth exists but Firestore doc is missing, create it.
-            // This prevents "invisible" users who can login but don't show up in contacts.
+            // Self-healing: Create default profile if missing
             console.warn("User profile missing in Firestore, creating default profile...");
             const newUser: User = {
                 user_id: uid,
@@ -59,12 +59,13 @@ export const chatService = {
                 last_seen: new Date().toISOString(),
                 is_blocked: false
             };
-            await setDoc(userDocRef, newUser);
+            // NON-BLOCKING: Create doc in background
+            setDoc(userDocRef, newUser).catch(err => console.warn("Background profile creation failed", err));
+            
             return success(newUser);
         }
       } catch (docError) {
         console.warn("Failed to fetch/create user profile doc, using auth data", docError);
-        // Fallback for offline or error scenarios
         const fallbackUser: User = {
             user_id: uid,
             username: userCredential.user.displayName || 'User',
@@ -94,7 +95,11 @@ export const chatService = {
           is_blocked: false
       };
 
-      await setDoc(doc(db, 'users', uid), newUser);
+      // NON-BLOCKING: Write to Firestore in background. 
+      // Firestore SDK caches this locally immediately, so subsequent reads succeed even if network is slow.
+      setDoc(doc(db, 'users', uid), newUser).catch(e => console.error("Profile creation error", e));
+      
+      // Update Auth profile (usually fast)
       await updateProfile(userCredential.user, { displayName: username });
       
       return success(newUser);
@@ -112,23 +117,23 @@ export const chatService = {
       const snapshot = await getDocs(q);
       const users: User[] = [];
       snapshot.forEach(doc => {
-          // Ensure we don't include ourselves and valid data exists
           const data = doc.data() as User;
-          if (doc.id !== currentUserId && data.username) {
-            users.push(data);
+          if (doc.id !== currentUserId) {
+            // Ensure user_id matches doc.id
+            users.push({ ...data, user_id: doc.id });
           }
       });
       return success(users);
     } catch (e: any) {
-      // Fallback if index is missing (orderBy usually requires one if mixed with other filters)
-      // Retry without ordering
+      // Fallback if index is missing or orderBy fails
       try {
           const q = query(collection(db, 'users'), limit(50));
           const snapshot = await getDocs(q);
           const users: User[] = [];
           snapshot.forEach(doc => {
             if (doc.id !== currentUserId) {
-                users.push(doc.data() as User);
+                const data = doc.data() as User;
+                users.push({ ...data, user_id: doc.id });
             }
           });
           return success(users);
@@ -236,7 +241,7 @@ export const chatService = {
           message: text,
           type: 'text',
           timestamp: timestamp,
-          status: 'sent' // Initially sent, subscriber will see 'pending' if offline
+          status: 'sent'
       };
 
       // 1. Add Message
@@ -244,12 +249,11 @@ export const chatService = {
       
       // 2. Update Chat Metadata (last_message)
       const chatRef = doc(db, 'chats', chatId);
-      // updateDoc resolves when written to backend (or offline cache). 
-      // We don't await this strictly for the UI to update, as the listener handles it.
-      await updateDoc(chatRef, {
+      // NON-BLOCKING: Update chat metadata in background
+      updateDoc(chatRef, {
           last_message: { ...msgData, message_id: msgRef.id },
           updated_at: timestamp
-      });
+      }).catch(e => console.warn("Failed to update chat metadata", e));
 
       return success({ ...msgData, message_id: msgRef.id } as Message);
     } catch (e: any) {
@@ -263,8 +267,6 @@ export const chatService = {
       try {
         const batch = writeBatch(db);
         
-        // Firestore limits batches to 500 operations. 
-        // We assume messageIds chunk is smaller for this UI interaction.
         messageIds.forEach(id => {
             const ref = doc(db, `chats/${chatId}/messages`, id);
             batch.update(ref, { status: status });
