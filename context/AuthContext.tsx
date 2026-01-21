@@ -1,8 +1,9 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { User } from '../types';
+import { sheetService } from '../services/sheetService';
 import { auth, db } from '../services/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -18,88 +19,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Monitor Firebase Auth State
+  // Firebase Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Fetch extended user details from Firestore
-        try {
-            const userDocRef = doc(db, 'users', firebaseUser.uid);
-            const userDoc = await getDoc(userDocRef);
-            
-            if (userDoc.exists()) {
-                setUser(userDoc.data() as User);
-            } else {
-                // Fallback if doc doesn't exist yet (shouldn't happen in normal flow)
-                setUser({
-                    user_id: firebaseUser.uid,
-                    username: firebaseUser.displayName || 'User',
-                    email: firebaseUser.email || '',
-                    status: 'online',
-                    last_seen: new Date().toISOString(),
-                    is_blocked: false
-                });
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        if (currentUser) {
+            // Fetch extended profile from Firestore
+            try {
+                const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+                if (userDoc.exists()) {
+                    setUser(userDoc.data() as User);
+                } else {
+                    // Fallback if doc missing
+                     setUser({
+                         user_id: currentUser.uid,
+                         username: currentUser.displayName || 'User',
+                         email: currentUser.email || '',
+                         status: 'online',
+                         last_seen: new Date().toISOString(),
+                         is_blocked: false
+                     });
+                }
+            } catch (e) {
+                console.error("Error fetching user profile", e);
             }
-        } catch (e) {
-            console.error("Error fetching user profile:", e);
+        } else {
+            setUser(null);
         }
-      } else {
-        setUser(null);
-      }
-      setIsLoading(false);
+        setIsLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
   const login = async (email: string, password: string): Promise<{success: boolean, error?: string}> => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      return { success: true };
-    } catch (error: any) {
-      let msg = "Login failed";
-      if (error.code === 'auth/invalid-credential') msg = "Invalid email or password";
-      if (error.code === 'auth/user-not-found') msg = "User not found";
-      if (error.code === 'auth/wrong-password') msg = "Incorrect password";
-      return { success: false, error: msg };
-    }
+    return sheetService.login(email, password);
   };
 
   const signup = async (username: string, email: string, password: string): Promise<{success: boolean, error?: string}> => {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-
-      // Update Display Name
-      await updateProfile(firebaseUser, { displayName: username });
-
-      // Create User Document in Firestore
-      const newUser: User = {
-        user_id: firebaseUser.uid,
-        username: username,
-        email: email,
-        status: 'online',
-        last_seen: new Date().toISOString(),
-        is_blocked: false
-      };
-
-      await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
-      
-      // State update is handled by onAuthStateChanged listener
-      return { success: true };
-    } catch (error: any) {
-      let msg = "Signup failed";
-      if (error.code === 'auth/email-already-in-use') msg = "Email already in use";
-      if (error.code === 'auth/weak-password') msg = "Password should be at least 6 characters";
-      return { success: false, error: msg };
-    }
+    return sheetService.signup(username, email, password);
   };
 
   const logout = async () => {
     try {
         await signOut(auth);
+        setUser(null);
     } catch (e) {
-        console.error(e);
+        console.error("Logout failed", e);
     }
   };
 

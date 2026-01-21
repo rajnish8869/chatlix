@@ -1,5 +1,5 @@
 export interface User {
-  user_id: string;
+  user_id: string; // Matches Firebase Auth UID
   username: string;
   email: string;
   status: string;
@@ -8,17 +8,17 @@ export interface User {
 }
 
 export interface Chat {
-  chat_id: string;
+  chat_id: string; // Firestore Doc ID
   type: 'private' | 'group';
-  participants: string[]; // JSON array of user_ids
+  participants: string[]; 
   created_at: string;
-  updated_at?: string; // For delta sync
-  last_message?: Message; // Virtual field for UI
-  name?: string; // Virtual field for group name or computed name
+  updated_at?: string; 
+  last_message?: Message; 
+  name?: string; 
 }
 
 export interface Message {
-  message_id: string;
+  message_id: string; // Firestore Doc ID
   chat_id: string;
   sender_id: string;
   message: string;
@@ -38,7 +38,7 @@ export interface AppSettings {
 export interface LogEvent {
   event: string;
   user_id: string;
-  metadata: string; // JSON string
+  metadata: string; 
   timestamp: string;
 }
 

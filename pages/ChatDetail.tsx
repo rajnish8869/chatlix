@@ -157,20 +157,9 @@ const ChatDetail: React.FC = () => {
   useEffect(() => {
     if (chatId) {
       loadMessages(chatId);
-      const interval = setInterval(() => {
-          if (!isOffline) {
-              const currentMsgs = messages[chatId] || [];
-              let lastTimestamp = undefined;
-              if (currentMsgs.length > 0) {
-                  const confirmedMsgs = currentMsgs.filter(m => !m.message_id.startsWith('temp-'));
-                  if (confirmedMsgs.length > 0) lastTimestamp = confirmedMsgs[confirmedMsgs.length - 1].timestamp;
-              }
-              loadMessages(chatId, undefined, lastTimestamp);
-          }
-      }, Math.max(2000, settings.polling_interval / 2)); 
-      return () => clearInterval(interval);
+      // Removed polling interval as we use realtime subscription
     }
-  }, [chatId, isOffline, settings.polling_interval]);
+  }, [chatId, loadMessages]);
 
   // --- Mark Read ---
   useEffect(() => {
