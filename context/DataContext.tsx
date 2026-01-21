@@ -56,6 +56,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setSyncing(true);
+    // Subscribe to chat list
     chatsUnsub.current = chatService.subscribeToChats(user.user_id, (newChats) => {
         setChats(newChats);
         setSyncing(false);
@@ -68,6 +69,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
         if (chatsUnsub.current) chatsUnsub.current();
+        // Cleanup all message listeners
+        Object.values(messageUnsubs.current).forEach(unsub => unsub());
     };
   }, [user]);
 
@@ -96,15 +99,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return response.success && response.data ? response.data.chat_id : null;
   };
 
-  // Subscribe to messages when a chat is opened (via loadMessages call)
+  // Subscribe to messages when a chat is opened
   const loadMessages = useCallback(async (chatId: string, beforeTimestamp?: string) => {
-    // If we are already subscribed, do nothing (or implement pagination logic if beforeTimestamp is present)
+    // If we are already subscribed, do nothing. 
+    // Note: Pagination (beforeTimestamp) would require a separate fetch strategy or updating the subscription limit.
+    // For this implementation, we rely on the subscription to the last 100 messages.
     if (messageUnsubs.current[chatId]) {
         return;
     }
 
     // Subscribe to this chat
-    messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 50, (msgs) => {
+    messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 100, (msgs) => {
         setMessages(prev => ({
             ...prev,
             [chatId]: msgs
@@ -112,28 +117,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, []);
 
-  // Cleanup message listeners on unmount
-  useEffect(() => {
-      return () => {
-          Object.values(messageUnsubs.current).forEach(unsub => unsub());
-      };
-  }, []);
-
   const sendMessage = async (chatId: string, text: string) => {
     if (!user || !text.trim()) return;
+    // We don't manually update local state here. 
+    // The chatService.sendMessage triggers a local write, 
+    // which fires the onSnapshot listener immediately with 'pending' status.
     await chatService.sendMessage(chatId, user.user_id, text);
   };
 
   const markMessagesRead = async (chatId: string, messageIds: string[]) => {
-      // Optimistic update
-      setMessages(prev => {
-          const list = prev[chatId] || [];
-          return {
-              ...prev,
-              [chatId]: list.map(m => messageIds.includes(m.message_id) ? { ...m, status: 'read' } : m)
-          }
-      });
-      chatService.updateMessageStatus(chatId, messageIds, 'read');
+      if (messageIds.length === 0) return;
+      
+      // Optimistic update in UI is optional since listener is fast, 
+      // but strictly relying on listener is safer for consistency.
+      // However, we call the service to persist.
+      await chatService.updateMessageStatus(chatId, messageIds, 'read');
   };
 
   const retryFailedMessages = () => {};

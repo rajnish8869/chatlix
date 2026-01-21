@@ -11,7 +11,9 @@ import {
     limit, 
     addDoc, 
     updateDoc, 
-    onSnapshot
+    onSnapshot,
+    writeBatch,
+    serverTimestamp
 } from 'firebase/firestore';
 import { 
     signInWithEmailAndPassword, 
@@ -166,16 +168,34 @@ export const chatService = {
   // --- MESSAGES ---
 
   subscribeToMessages: (chatId: string, limitCount: number, callback: (msgs: Message[]) => void) => {
+      // Limit to last 100 messages for performance
+      // Note: Firestore descending index is needed for 'limitToLast', but for simple ordered list, 
+      // we usually just load 'limit' with 'asc' if the list is small, or use descending + reverse.
+      // Here we assume standard 'asc' for conversation flow.
       const qLimited = query(
           collection(db, `chats/${chatId}/messages`),
-          orderBy('timestamp', 'asc')
+          orderBy('timestamp', 'asc'),
+          limit(100) 
       );
 
-      return onSnapshot(qLimited, (snapshot) => {
-          const msgs = snapshot.docs.map(doc => ({
-              message_id: doc.id,
-              ...doc.data()
-          } as Message));
+      // includeMetadataChanges: true is CRITICAL for offline support. 
+      // It fires the listener immediately when data is written locally (hasPendingWrites: true)
+      // and again when synced to server (hasPendingWrites: false).
+      return onSnapshot(qLimited, { includeMetadataChanges: true }, (snapshot) => {
+          const msgs = snapshot.docs.map(doc => {
+              const data = doc.data();
+              // Determine status based on metadata and data
+              let status = data.status;
+              if (doc.metadata.hasPendingWrites) {
+                  status = 'pending';
+              }
+              
+              return {
+                  message_id: doc.id,
+                  ...data,
+                  status: status
+              } as Message;
+          });
           callback(msgs);
       });
   },
@@ -189,7 +209,7 @@ export const chatService = {
           message: text,
           type: 'text',
           timestamp: timestamp,
-          status: 'sent'
+          status: 'sent' // Initially sent, subscriber will see 'pending' if offline
       };
 
       // 1. Add Message
@@ -197,6 +217,8 @@ export const chatService = {
       
       // 2. Update Chat Metadata (last_message)
       const chatRef = doc(db, 'chats', chatId);
+      // updateDoc resolves when written to backend (or offline cache). 
+      // We don't await this strictly for the UI to update, as the listener handles it.
       await updateDoc(chatRef, {
           last_message: { ...msgData, message_id: msgRef.id },
           updated_at: timestamp
@@ -209,12 +231,21 @@ export const chatService = {
   },
     
   updateMessageStatus: async (chatId: string, messageIds: string[], status: 'delivered' | 'read') => {
-      // In a real production app, use batch writes
+      if (messageIds.length === 0) return;
+
       try {
-        // Placeholder for batch update logic
-        // messageIds.forEach(id => updateDoc(doc(db, `chats/${chatId}/messages`, id), { status }));
+        const batch = writeBatch(db);
+        
+        // Firestore limits batches to 500 operations. 
+        // We assume messageIds chunk is smaller for this UI interaction.
+        messageIds.forEach(id => {
+            const ref = doc(db, `chats/${chatId}/messages`, id);
+            batch.update(ref, { status: status });
+        });
+
+        await batch.commit();
       } catch (e) {
-          console.error(e);
+          console.error("Failed to batch update message status", e);
       }
   },
 

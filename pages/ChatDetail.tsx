@@ -68,6 +68,7 @@ const MessageItem = React.memo(({
               : 'bg-msg-other text-text-main rounded-[22px] rounded-tl-md'
             } 
             ${msg.status === 'failed' ? 'border-2 border-red-500' : ''}
+            ${msg.status === 'pending' ? 'opacity-80' : 'opacity-100'}
           `}
         >
           <p className="text-[15.5px] leading-relaxed break-words whitespace-pre-wrap">{msg.message}</p>
@@ -78,10 +79,15 @@ const MessageItem = React.memo(({
             </span>
             {isMe && (
               <span className="flex items-center ml-0.5 opacity-90 scale-90">
-                {msg.status === 'pending' && <span className="animate-spin w-2.5 h-2.5 border-2 border-current border-t-transparent rounded-full"></span>}
+                {msg.status === 'pending' && (
+                    <svg className="animate-spin h-3 w-3 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                )}
                 {msg.status === 'sent' && <Icons.Check />}
                 {msg.status === 'delivered' && <Icons.DoubleCheck />}
-                {msg.status === 'read' && <span className="text-white"><Icons.DoubleCheck /></span>}
+                {msg.status === 'read' && <span className="text-blue-200"><Icons.DoubleCheck /></span>}
                 {msg.status === 'failed' && <span className="text-red-200 font-bold">!</span>}
               </span>
             )}
@@ -96,7 +102,7 @@ const ChatDetail: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { messages, loadMessages, sendMessage, chats, isOffline, markMessagesRead, settings } = useData();
+  const { messages, loadMessages, sendMessage, chats, isOffline, markMessagesRead } = useData();
   
   const [inputText, setInputText] = useState('');
   const [loadingTop, setLoadingTop] = useState(false);
@@ -157,20 +163,23 @@ const ChatDetail: React.FC = () => {
   useEffect(() => {
     if (chatId) {
       loadMessages(chatId);
-      // Removed polling interval as we use realtime subscription
     }
   }, [chatId, loadMessages]);
 
   // --- Mark Read ---
   useEffect(() => {
     if (!chatId || !user) return;
+    
+    // Only mark messages as read if they are NOT from me and status is NOT read
     const unreadMessages = chatMessages.filter(
         m => String(m.sender_id) !== String(user.user_id) && m.status !== 'read'
     );
+    
     if (unreadMessages.length > 0) {
-        markMessagesRead(chatId, unreadMessages.map(m => m.message_id));
+        const ids = unreadMessages.map(m => m.message_id);
+        markMessagesRead(chatId, ids);
     }
-  }, [chatMessages, chatId, user]);
+  }, [chatMessages, chatId, user, markMessagesRead]);
 
   // --- Auto-Grow Input ---
   useEffect(() => {
@@ -184,10 +193,10 @@ const ChatDetail: React.FC = () => {
   const handleStartReached = useCallback(async () => {
     if (loadingTop || chatMessages.length < 20 || !chatId) return;
     setLoadingTop(true);
-    const oldestMsg = chatMessages[0];
-    await loadMessages(chatId, oldestMsg.timestamp); 
-    setLoadingTop(false);
-  }, [chatId, chatMessages, loadingTop, loadMessages]);
+    // Placeholder for real pagination. Currently, the subscription limits to 100.
+    // Real history would require a 'fetchMore' action in context.
+    setTimeout(() => setLoadingTop(false), 500);
+  }, [chatId, chatMessages, loadingTop]);
 
   const handleSend = async () => {
     if (!inputText.trim() || !chatId) return;
@@ -201,7 +210,13 @@ const ChatDetail: React.FC = () => {
     
     // Immediate scroll on send
     virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' });
-    await sendMessage(chatId, text);
+    
+    try {
+        await sendMessage(chatId, text);
+    } catch (e) {
+        console.error("Failed to send", e);
+        // Error handling visual could be added here
+    }
   };
 
   const handleScrollToBottom = () => {
@@ -220,7 +235,6 @@ const ChatDetail: React.FC = () => {
 
   const handleReplyMessage = () => {
       if (selectedMessage) {
-          // Quote reply logic
           const shortMsg = selectedMessage.message.length > 30 
             ? selectedMessage.message.substring(0, 30) + '...' 
             : selectedMessage.message;
@@ -257,7 +271,14 @@ const ChatDetail: React.FC = () => {
              <div className="flex flex-col overflow-hidden">
                 <span className="text-base font-bold leading-tight truncate">{currentChat?.name || 'Chat'}</span>
                 <span className="text-[11px] text-text-sub flex items-center gap-1">
-                   {isOffline ? <span className="text-red-400 font-bold">Offline</span> : 'Tap for info'}
+                   {isOffline ? (
+                       <span className="text-red-400 font-bold flex items-center gap-1">
+                           <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
+                           Offline
+                       </span>
+                   ) : (
+                       <span className="text-green-500 font-semibold">Online</span>
+                   )}
                 </span>
              </div>
           </div>
@@ -271,7 +292,6 @@ const ChatDetail: React.FC = () => {
         <Virtuoso
           ref={virtuosoRef}
           key={chatId}
-          // Added paddingBottom to style for visual breathing room
           style={{ height: '100%', paddingBottom: '20px', boxSizing: 'border-box' }}
           data={chatMessages}
           startReached={handleStartReached}
@@ -284,6 +304,7 @@ const ChatDetail: React.FC = () => {
           followOutput={(isAtBottom) => {
              const lastMsg = chatMessages[chatMessages.length - 1];
              if (!lastMsg) return false;
+             // Always follow output if I sent the message
              if (String(lastMsg.sender_id) === String(user?.user_id)) return 'smooth';
              return isAtBottom ? 'smooth' : false;
           }}
@@ -310,12 +331,15 @@ const ChatDetail: React.FC = () => {
         }}
       >
         <div className="flex items-end gap-2 max-w-4xl mx-auto">
-            <div className="flex-1 bg-surface-highlight rounded-[24px] border border-border focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 transition-all flex items-center px-4 py-1.5 shadow-sm">
+            <div className={`
+                flex-1 rounded-[24px] border transition-all flex items-center px-4 py-1.5 shadow-sm
+                ${isOffline ? 'bg-red-500/5 border-red-500/20' : 'bg-surface-highlight border-border focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20'}
+            `}>
                 <textarea
                     ref={textareaRef}
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    placeholder={isOffline ? "Waiting for connection..." : "Message"}
+                    placeholder={isOffline ? "Offline • Waiting for connection..." : "Message"}
                     rows={1}
                     className="w-full bg-transparent text-text-main text-[16px] border-none focus:ring-0 resize-none min-h-[24px] max-h-[120px] py-2 leading-relaxed placeholder:text-text-sub/60"
                     style={{ padding: '4px 0' }}
@@ -355,6 +379,7 @@ const ChatDetail: React.FC = () => {
                 <p className="text-xs font-bold text-text-sub uppercase mb-1">Message Details</p>
                 <p className="text-sm text-text-main font-mono text-opacity-70">ID: {selectedMessage.message_id}</p>
                 <p className="text-sm text-text-main font-mono text-opacity-70">Sent: {new Date(selectedMessage.timestamp).toLocaleString()}</p>
+                <p className="text-sm text-text-main font-mono text-opacity-70">Status: <span className="uppercase font-bold">{selectedMessage.status}</span></p>
              </div>
          )}
       </BottomSheet>
