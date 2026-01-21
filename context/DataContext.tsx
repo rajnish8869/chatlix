@@ -36,8 +36,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const chatsUnsub = useRef<Unsubscribe | null>(null);
+  const contactsUnsub = useRef<Unsubscribe | null>(null);
   const messageUnsubs = useRef<Record<string, Unsubscribe>>({});
-  const sharedKeysCache = useRef<Record<string, CryptoKey>>({});
+  
+  // Cache stores: { [userId]: { key: CryptoKey, pubKeyStr: string } }
+  const sharedKeysCache = useRef<Record<string, { key: CryptoKey, pubKeyStr: string }>>({});
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -50,29 +53,70 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // --- Real-time Chat Sync & Auto-Delivery ---
+  // --- Real-time Sync (Chats + Users) ---
   useEffect(() => {
     if (!user) {
         setChats([]);
+        setContacts([]);
         if (chatsUnsub.current) chatsUnsub.current();
+        if (contactsUnsub.current) contactsUnsub.current();
         return;
     }
 
     setSyncing(true);
+    
+    // 1. Subscribe to Chats
     chatsUnsub.current = chatService.subscribeToChats(user.user_id, (newChats) => {
         setChats(newChats);
         setSyncing(false);
 
-        // Check for messages in the chat list that are 'sent' but not by me, and mark them delivered
+        // Auto-mark delivered if I am receiving them
         newChats.forEach(chat => {
             if (chat.last_message && 
                 chat.last_message.sender_id !== user.user_id && 
                 chat.last_message.status === 'sent') {
-                 // Mark delivered in background
                  chatService.markAs(chat.chat_id, chat.last_message.message_id, 'delivered');
             }
         });
     });
+
+    // 2. Subscribe to Users (Real-time Presence)
+    contactsUnsub.current = chatService.subscribeToUsers(user.user_id, (users) => {
+        const now = new Date().getTime();
+        const enhancedContacts = users.map(c => {
+            const lastSeenTime = new Date(c.last_seen).getTime();
+            // If last_seen is within 2 minutes, consider online
+            const isOnline = (now - lastSeenTime) < 2 * 60 * 1000; 
+            return { ...c, status: isOnline ? 'online' : 'offline' };
+        });
+        
+        // Sort: Online first, then alphabetical
+        enhancedContacts.sort((a, b) => {
+            if (a.status === 'online' && b.status !== 'online') return -1;
+            if (a.status !== 'online' && b.status === 'online') return 1;
+            return a.username.localeCompare(b.username);
+        });
+        
+        setContacts(enhancedContacts);
+    });
+
+    // 3. Local Status Decay (Check every 15s to switch people offline if timeout)
+    const decayTimer = setInterval(() => {
+        setContacts(prev => {
+             const now = new Date().getTime();
+             let changed = false;
+             const next = prev.map(c => {
+                 const lastSeenTime = new Date(c.last_seen).getTime();
+                 const isOnline = (now - lastSeenTime) < 2 * 60 * 1000;
+                 if (c.status === 'online' && !isOnline) {
+                     changed = true;
+                     return { ...c, status: 'offline' };
+                 }
+                 return c;
+             });
+             return changed ? next : prev;
+        });
+    }, 15000);
 
     chatService.fetchSettings().then(res => {
         if(res.success && res.data) setSettings(res.data);
@@ -80,80 +124,68 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
         if (chatsUnsub.current) chatsUnsub.current();
+        if (contactsUnsub.current) contactsUnsub.current();
+        clearInterval(decayTimer);
         Object.values(messageUnsubs.current).forEach(unsub => unsub());
     };
   }, [user]);
 
   // --- Crypto Helpers ---
   const getSharedKey = async (otherUserId: string): Promise<CryptoKey | null> => {
-      if (sharedKeysCache.current[otherUserId]) return sharedKeysCache.current[otherUserId];
-      
       const myPrivKeyStr = localStorage.getItem(`chatlix_priv_${user?.user_id}`);
+      // Find user from contacts list (which is kept updated via subscription)
       const otherUser = contacts.find(c => c.user_id === otherUserId);
       
-      if (myPrivKeyStr && otherUser?.publicKey) {
-          try {
-              const key = await deriveSharedKey(myPrivKeyStr, otherUser.publicKey);
-              sharedKeysCache.current[otherUserId] = key;
-              return key;
-          } catch (e) {
-              console.error("Key Derivation Failed", e);
-          }
+      if (!myPrivKeyStr || !otherUser?.publicKey) return null;
+
+      // Check cache validity
+      const cached = sharedKeysCache.current[otherUserId];
+      if (cached && cached.pubKeyStr === otherUser.publicKey) {
+          return cached.key;
       }
-      return null;
+
+      try {
+          // Derive new key
+          const key = await deriveSharedKey(myPrivKeyStr, otherUser.publicKey);
+          // Update cache
+          sharedKeysCache.current[otherUserId] = { key, pubKeyStr: otherUser.publicKey };
+          return key;
+      } catch (e) {
+          console.error("Key Derivation Failed", e);
+          return null;
+      }
   };
 
   const decryptContent = async (chatId: string, content: string, senderId: string): Promise<string> => {
-      // 1. Find Chat Type
       const chat = chats.find(c => c.chat_id === chatId);
-      
-      // Group chats are plaintext for now
       if (chat && chat.type === 'group') return content;
       
-      // Private Chat E2EE
+      // Determine whose key we need to establish the shared secret.
+      // E2EE logic: Shared Secret = ECDH(MyPriv, OtherPub) == ECDH(OtherPriv, MyPub)
+      
       const otherId = chat?.participants.find(p => p !== user?.user_id) || senderId;
       
       if (otherId === user?.user_id) { 
-         // Message to self (saved messages) - tricky without storing session key. 
-         // For now, if I am the sender, I should have encrypted it for the *other* person.
-         // But I cannot decrypt it unless I encrypted it for *myself* too.
-         // SIMPLIFICATION: In this implementation, sender can't decrypt their own history 
-         // unless we store the plain text locally or encrypt for self. 
-         // We will return content (assuming optimistic local update) or a placeholder.
-         // Actually, deriveSharedKey(MyPriv, OtherPub) === deriveSharedKey(OtherPriv, MyPub).
-         // So I CAN decrypt my own sent messages if I use the SAME shared secret logic!
-         // Yes: ECDH(MyPriv, OtherPub) is the same secret used to encrypt.
+         // I am the sender. To decrypt my own message, I need the Shared Secret I used to encrypt it.
+         // That secret was derived from MyPriv + ReceiverPub.
+         // I need to find who the receiver was.
          const realOtherId = chat?.participants.find(p => p !== user?.user_id);
-         if (!realOtherId) return content;
+         if (!realOtherId) return content; // Self-chat or error
+         
          const key = await getSharedKey(realOtherId);
          if(key) return await decryptMessage(content, key);
       } else {
+         // I am the receiver. Sender is `otherId`.
+         // I derive secret from MyPriv + SenderPub.
          const key = await getSharedKey(otherId);
          if(key) return await decryptMessage(content, key);
       }
-      
-      return "🔒 Encrypted Message";
+      return "🔒 Encrypted Message (Key Mismatch)";
   };
 
   const loadContacts = useCallback(async () => {
-    if(!user) return;
-    try {
-        const response = await chatService.fetchContacts(user.user_id);
-        if (response.success && response.data) {
-            // Process real-time presence (mock logic for "just now")
-            const now = new Date().getTime();
-            const enhancedContacts = response.data.map(c => {
-                const lastSeenTime = new Date(c.last_seen).getTime();
-                // If last_seen is within 2 minutes, consider online
-                const isOnline = (now - lastSeenTime) < 2 * 60 * 1000; 
-                return { ...c, status: isOnline ? 'online' : 'offline' };
-            });
-            setContacts(enhancedContacts);
-        }
-    } catch (e) {
-        console.error("Error loading contacts", e);
-    }
-  }, [user]);
+    // Handled by real-time subscription
+  }, []);
 
   const createChat = async (participants: string[]): Promise<string | null> => {
     if (!user) return null;
@@ -168,7 +200,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 100, (msgs) => {
         setMessages(prev => ({ ...prev, [chatId]: msgs }));
         
-        // Auto-mark delivered if I am receiving them
         const unreadByMe = msgs.filter(m => m.sender_id !== user?.user_id && m.status === 'sent');
         if (unreadByMe.length > 0) {
             chatService.updateMessageStatus(chatId, unreadByMe.map(m => m.message_id), 'delivered');
@@ -179,7 +210,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendMessage = async (chatId: string, text: string) => {
     if (!user || !text.trim()) return;
     
-    // E2EE Logic
     let content = text;
     let type: 'text' | 'encrypted' = 'text';
     

@@ -111,6 +111,8 @@ export const decryptMessage = async (cipherTextBase64: string, sharedKey: Crypto
     const buffer = base64ToArrayBuffer(cipherTextBase64);
     const data = new Uint8Array(buffer);
     
+    if (data.length < 13) throw new Error("Invalid data length");
+
     const iv = data.slice(0, 12);
     const cipherText = data.slice(12);
 
@@ -125,7 +127,8 @@ export const decryptMessage = async (cipherTextBase64: string, sharedKey: Crypto
 
     return new TextDecoder().decode(decrypted);
   } catch (e) {
-    console.error("Decryption failed", e);
-    return "🔒 Decryption Failed";
+    // This is expected if the key has changed (old messages)
+    // console.warn("Decryption failed (expected for old keys):", e);
+    return "🔒 Decryption Failed (Old Key)";
   }
 };

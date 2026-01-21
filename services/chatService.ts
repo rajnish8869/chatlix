@@ -117,7 +117,6 @@ export const chatService = {
 
   fetchContacts: async (currentUserId: string): Promise<ApiResponse<User[]>> => {
     try {
-      // Fetch all users to get their latest status and public keys
       const q = query(collection(db, 'users'), limit(100));
       const snapshot = await getDocs(q);
       
@@ -128,7 +127,6 @@ export const chatService = {
           }
       });
       
-      // Sort: Online first, then alphabetical
       users.sort((a, b) => {
           if (a.status === 'online' && b.status !== 'online') return -1;
           if (a.status !== 'online' && b.status === 'online') return 1;
@@ -139,6 +137,27 @@ export const chatService = {
     } catch (e: any) {
       return fail(e.message);
     }
+  },
+
+  subscribeToUsers: (currentUserId: string, callback: (users: User[]) => void) => {
+      const q = query(collection(db, 'users'), limit(100));
+      return onSnapshot(q, (snapshot) => {
+          const users: User[] = [];
+          snapshot.forEach(doc => {
+              if (doc.id !== currentUserId) {
+                  const data = doc.data();
+                  if (data) {
+                      users.push({ 
+                          ...data, 
+                          user_id: doc.id,
+                          last_seen: data.last_seen || new Date(0).toISOString(),
+                          status: data.status || 'offline'
+                      } as User);
+                  }
+              }
+          });
+          callback(users);
+      });
   },
 
   // --- CHATS ---
@@ -245,7 +264,6 @@ export const chatService = {
       }
   },
   
-  // New: Mark single message delivered/read in background
   markAs: async (chatId: string, messageId: string, status: 'delivered' | 'read') => {
       try {
           await updateDoc(doc(db, `chats/${chatId}/messages`, messageId), { status });
