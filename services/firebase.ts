@@ -1,6 +1,6 @@
-import * as firebase from "firebase/app";
+import * as firebaseApp from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC8Usjvsc9urqgVMaU-j4chKvtzHRP55L0",
@@ -12,18 +12,15 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-export const app = firebase.initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Use type casting to avoid "Module has no exported member" errors which can occur
+// due to type definition conflicts (e.g. v8 types vs v9 runtime)
+const api = firebaseApp as any;
 
-// Enable Offline Persistence
-// Note: This promise might fail if multiple tabs are open, which is fine.
-enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code == 'failed-precondition') {
-        // Multiple tabs open, persistence can only be enabled in one tab at a time.
-        console.warn('Firestore persistence failed: Multiple tabs open');
-    } else if (err.code == 'unimplemented') {
-        // The current browser does not support all of the features required to enable persistence
-        console.warn('Firestore persistence failed: Not supported');
-    }
-});
+const app = (api.getApps && api.getApps().length > 0) 
+  ? api.getApp() 
+  : api.initializeApp(firebaseConfig);
+
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+export { app, auth, db };
