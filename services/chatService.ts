@@ -41,6 +41,10 @@ export const chatService = {
       
       if (userDoc.exists()) {
         const userData = userDoc.data() as User;
+        // Ensure enable_groups exists for legacy users
+        if (userData.enable_groups === undefined) {
+            userData.enable_groups = true;
+        }
         return success({ ...userData, status: 'online' });
       } else {
          // Create default profile if missing
@@ -50,7 +54,8 @@ export const chatService = {
             email: userCredential.user.email || email,
             status: 'online',
             last_seen: new Date().toISOString(),
-            is_blocked: false
+            is_blocked: false,
+            enable_groups: true
          };
          await setDoc(userDocRef, newUser);
          return success(newUser);
@@ -72,7 +77,8 @@ export const chatService = {
           email,
           status: 'online',
           last_seen: new Date().toISOString(),
-          is_blocked: false
+          is_blocked: false,
+          enable_groups: true
       };
 
       await setDoc(doc(db, 'users', uid), newUser);
@@ -103,7 +109,7 @@ export const chatService = {
       }
   },
 
-  updateUserProfile: async (userId: string, data: { username?: string }) => {
+  updateUserProfile: async (userId: string, data: Partial<User>) => {
       try {
           await updateDoc(doc(db, 'users', userId), data);
           if (data.username && auth.currentUser) {

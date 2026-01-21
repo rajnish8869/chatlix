@@ -14,6 +14,7 @@ interface AuthContextType {
   signup: (username: string, email: string, password: string) => Promise<{success: boolean, error?: string}>;
   logout: () => Promise<void>;
   updateName: (name: string) => Promise<void>;
+  toggleGroupChats: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -82,7 +83,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  last_seen: new Date().toISOString(),
                  is_blocked: remoteData?.is_blocked || false,
                  publicKey: pubKey,
-                 privateKey: privKey // We keep it in state too just in case
+                 privateKey: privKey, // We keep it in state too just in case
+                 enable_groups: remoteData?.enable_groups !== undefined ? remoteData.enable_groups : true
             };
 
             setUser(finalUser);
@@ -134,9 +136,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await chatService.updateUserProfile(user.user_id, { username: name });
     setUser(prev => prev ? { ...prev, username: name } : null);
   };
+  
+  const toggleGroupChats = async () => {
+      if (!user) return;
+      const newValue = !(user.enable_groups ?? true);
+      await chatService.updateUserProfile(user.user_id, { enable_groups: newValue });
+      setUser(prev => prev ? { ...prev, enable_groups: newValue } : null);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateName }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateName, toggleGroupChats }}>
       {children}
     </AuthContext.Provider>
   );

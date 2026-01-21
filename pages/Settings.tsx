@@ -6,8 +6,8 @@ import { useTheme, Theme } from '../context/ThemeContext';
 import { TopBar, Button, Icons, Input, Avatar } from '../components/AndroidUI';
 
 const Settings: React.FC = () => {
-  const { user, logout, updateName } = useAuth();
-  const { settings, isOffline } = useData();
+  const { user, logout, updateName, toggleGroupChats } = useAuth();
+  const { isOffline } = useData();
   const { theme, setTheme } = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
   
@@ -35,6 +35,8 @@ const Settings: React.FC = () => {
       await updateName(editName.trim());
       setIsEditingName(false);
   };
+
+  const areGroupsEnabled = user?.enable_groups ?? true;
 
   return (
     <div 
@@ -101,15 +103,11 @@ const Settings: React.FC = () => {
         <div>
             <h3 className="text-xs font-bold text-text-sub uppercase tracking-wider mb-4 ml-4">Preferences</h3>
             <div className="bg-surface rounded-[28px] overflow-hidden border border-white/5 shadow-soft">
-                <div className="p-5 flex justify-between items-center border-b border-border">
+                <div className="p-5 flex justify-between items-center cursor-pointer tap-active" onClick={toggleGroupChats}>
                     <span className="font-semibold text-text-main">Group Chats</span>
-                    <div className={`w-10 h-6 rounded-full relative transition-colors ${settings.enable_groups ? "bg-green-500" : "bg-surface-highlight"}`}>
-                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${settings.enable_groups ? "right-1" : "left-1"}`} />
+                    <div className={`w-10 h-6 rounded-full relative transition-colors ${areGroupsEnabled ? "bg-green-500" : "bg-surface-highlight"}`}>
+                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${areGroupsEnabled ? "right-1" : "left-1"}`} />
                     </div>
-                </div>
-                 <div className="p-5 flex justify-between items-center">
-                    <span className="font-semibold text-text-main">Backend Status</span>
-                    <span className="text-xs font-mono bg-surface-highlight px-2 py-1 rounded text-primary">Firebase v12</span>
                 </div>
             </div>
         </div>
