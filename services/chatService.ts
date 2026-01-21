@@ -193,11 +193,11 @@ export const chatService = {
   },
 
   subscribeToChats: (userId: string, callback: (chats: Chat[]) => void) => {
-      // Requires Firestore Index: chats -> participants (array-contains) + updated_at (desc)
+      // FIX: Removed orderBy('updated_at', 'desc') to avoid needing a composite index.
+      // We query only by participants and sort client-side.
       const q = query(
           collection(db, 'chats'), 
-          where('participants', 'array-contains', userId),
-          orderBy('updated_at', 'desc')
+          where('participants', 'array-contains', userId)
       );
       
       return onSnapshot(q, (snapshot) => {
@@ -205,9 +205,20 @@ export const chatService = {
               chat_id: doc.id,
               ...doc.data()
           } as Chat));
+          
+          // Client-side sorting (Newest first)
+          chats.sort((a, b) => {
+              const tA = new Date(a.updated_at || a.created_at || 0).getTime();
+              const tB = new Date(b.updated_at || b.created_at || 0).getTime();
+              return tB - tA;
+          });
+
           callback(chats);
       }, (error) => {
-          console.error("Error subscribing to chats. ensure composite index exists:", error);
+          console.error("Error subscribing to chats:", error);
+          if (error.code === 'permission-denied') {
+              console.warn("Check Firestore Rules. Users must be allowed to read chats they are participants of.");
+          }
       });
   },
 
