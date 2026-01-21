@@ -21,20 +21,41 @@
               'text-main': 'var(--text-main)',
               'text-sub': 'var(--text-sub)',
               border: 'var(--border-color)',
+              danger: 'var(--danger-color)',
             },
             fontFamily: {
               sans: ['Inter', 'Roboto', 'sans-serif'],
             },
             boxShadow: {
-              'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.1)',
-              'glow': '0 0 15px rgba(var(--primary-color-rgb), 0.3)',
+              'soft': '0 8px 30px -4px rgba(0, 0, 0, 0.1)',
+              'glow': '0 0 20px -5px var(--primary-color)',
+              'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.1)',
+            },
+            animation: {
+              'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+              'fade-in': 'fadeIn 0.2s ease-out',
+              'scale-in': 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+            },
+            keyframes: {
+              slideUp: {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              },
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              scaleIn: {
+                '0%': { transform: 'scale(0.9)', opacity: '0' },
+                '100%': { transform: 'scale(1)', opacity: '1' },
+              }
             }
           }
         }
       }
     </script>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
       /* --- THEMES --- */
       :root[data-theme="midnight"] {
@@ -45,41 +66,41 @@
         --primary-fg: #ffffff;
         --secondary-color: #334155;
         --msg-me-bg: #4f46e5;
-        --msg-other-bg: #334155;
+        --msg-other-bg: #1e293b;
         --text-main: #f8fafc;
         --text-sub: #94a3b8;
-        --border-color: rgba(255,255,255,0.08);
-        --primary-color-rgb: 99, 102, 241;
+        --border-color: rgba(255,255,255,0.06);
+        --danger-color: #ef4444;
       }
 
       :root[data-theme="daylight"] {
-        --bg-color: #f3f4f6;
+        --bg-color: #f8fafc;
         --surface-color: #ffffff;
-        --surface-highlight: #f9fafb;
-        --primary-color: #2563eb;
+        --surface-highlight: #f1f5f9;
+        --primary-color: #3b82f6;
         --primary-fg: #ffffff;
-        --secondary-color: #e5e7eb;
-        --msg-me-bg: #2563eb;
+        --secondary-color: #e2e8f0;
+        --msg-me-bg: #3b82f6;
         --msg-other-bg: #ffffff;
-        --text-main: #1f2937;
-        --text-sub: #6b7280;
-        --border-color: rgba(0,0,0,0.06);
-        --primary-color-rgb: 37, 99, 235;
+        --text-main: #0f172a;
+        --text-sub: #64748b;
+        --border-color: rgba(0,0,0,0.05);
+        --danger-color: #ef4444;
       }
 
       :root[data-theme="eclipse"] {
         --bg-color: #000000;
         --surface-color: #121212;
-        --surface-highlight: #1e1e1e;
+        --surface-highlight: #27272a;
         --primary-color: #8b5cf6;
         --primary-fg: #ffffff;
-        --secondary-color: #27272a;
+        --secondary-color: #18181b;
         --msg-me-bg: #7c3aed;
-        --msg-other-bg: #27272a;
+        --msg-other-bg: #18181b;
         --text-main: #ffffff;
         --text-sub: #a1a1aa;
-        --border-color: rgba(255,255,255,0.12);
-        --primary-color-rgb: 139, 92, 246;
+        --border-color: rgba(255,255,255,0.08);
+        --danger-color: #ef4444;
       }
 
       body {
@@ -92,15 +113,30 @@
 
       /* Custom Utilities */
       .glass-panel {
-        background: rgba(var(--surface-color), 0.85);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
+        background: rgba(var(--surface-color), 0.7);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      }
+
+      .chat-bg-pattern {
+        background-image: radial-gradient(var(--border-color) 1px, transparent 1px);
+        background-size: 20px 20px;
       }
 
       .no-scrollbar::-webkit-scrollbar { display: none; }
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       
-      .tap-active:active { transform: scale(0.97); transition: transform 0.1s; }
+      .tap-active:active { transform: scale(0.96); transition: transform 0.1s; }
+      
+      /* Smooth input autofill fix */
+      input:-webkit-autofill,
+      input:-webkit-autofill:hover, 
+      input:-webkit-autofill:focus, 
+      input:-webkit-autofill:active{
+          -webkit-box-shadow: 0 0 0 30px var(--surface-color) inset !important;
+          -webkit-text-fill-color: var(--text-main) !important;
+          transition: background-color 5000s ease-in-out 0s;
+      }
     </style>
   <script type="importmap">
 {

@@ -1,23 +1,12 @@
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { TopBar, Icons, BottomSheet, ScrollDownFab, ConfirmationModal } from '../components/AndroidUI';
+import { TopBar, Icons, ScrollDownFab, ConfirmationModal, Avatar } from '../components/AndroidUI';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
-import { Message, Chat } from '../types';
+import { Message } from '../types';
 
-const animationStyles = `
-  @keyframes slide-in {
-    from { opacity: 0; transform: translateY(15px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .msg-anim {
-    animation: slide-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
-  }
-`;
-
-// Separate component to handle async decryption
 const MessageContent = ({ msg, decryptFn }: { msg: Message, decryptFn: any }) => {
     const [text, setText] = useState(msg.type === 'encrypted' ? '🔓 Decrypting...' : msg.message);
     
@@ -29,7 +18,7 @@ const MessageContent = ({ msg, decryptFn }: { msg: Message, decryptFn: any }) =>
         }
     }, [msg, decryptFn]);
 
-    return <p className="text-[15.5px] leading-relaxed break-words whitespace-pre-wrap">{text}</p>;
+    return <p className="text-[15px] leading-[1.4] break-words whitespace-pre-wrap">{text}</p>;
 };
 
 const MessageItem = React.memo(({ 
@@ -39,30 +28,27 @@ const MessageItem = React.memo(({
 }) => {
   const touchTimer = useRef<any>(undefined);
 
-  const handleTouchStart = () => { touchTimer.current = setTimeout(() => onLongPress(msg), 500); };
+  const handleTouchStart = () => { touchTimer.current = setTimeout(() => onLongPress(msg), 400); };
   const handleTouchEnd = () => { if (touchTimer.current) clearTimeout(touchTimer.current); };
 
-  // Generate a consistent color based on the senderName for a bit of UI flair
   const getNameColor = (name: string) => {
-    const colors = ['text-red-400', 'text-orange-400', 'text-amber-400', 'text-green-400', 'text-emerald-400', 'text-teal-400', 'text-cyan-400', 'text-sky-400', 'text-blue-400', 'text-indigo-400', 'text-violet-400', 'text-purple-400', 'text-fuchsia-400', 'text-pink-400', 'text-rose-400'];
+    const colors = ['text-blue-500', 'text-emerald-500', 'text-amber-500', 'text-purple-500', 'text-rose-500'];
     let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
+    for (let i = 0; i < name.length; i++) { hash = name.charCodeAt(i) + ((hash << 5) - hash); }
     return colors[Math.abs(hash) % colors.length];
   };
 
   return (
-    <div className={`msg-anim pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] transition-colors ${isSelected ? 'bg-primary/10 py-1' : ''}`}>
+    <div className={`px-3 animate-fade-in ${isSelected ? 'bg-primary/10 -mx-3 px-6 py-2' : ''}`}>
       {showDate && (
         <div className="flex justify-center py-6">
-          <span className="text-[10px] uppercase font-bold text-text-sub bg-surface/60 backdrop-blur-sm px-3 py-1 rounded-full tracking-widest shadow-sm">
+          <span className="text-[11px] font-bold text-text-sub bg-surface-highlight/70 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm">
             {new Date(msg.timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
           </span>
         </div>
       )}
       <div 
-        className={`flex flex-col mb-2 ${isMe ? 'items-end' : 'items-start'}`}
+        className={`flex flex-col mb-1.5 ${isMe ? 'items-end' : 'items-start'}`}
         onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={handleTouchStart} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd}
         onClick={() => onClick(msg)}
       >
@@ -73,28 +59,28 @@ const MessageItem = React.memo(({
         )}
 
         <div className={`
-            relative max-w-[82%] px-4 py-3 shadow-sm min-h-[44px] cursor-pointer active:scale-95 transition-transform duration-100
-            ${isSelected ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}
-            ${isMe ? 'bg-msg-me text-primary-fg rounded-[22px] rounded-tr-md' : 'bg-msg-other text-text-main rounded-[22px] rounded-tl-md'} 
-            ${msg.status === 'failed' ? 'border-2 border-red-500' : ''}
-            ${msg.status === 'pending' ? 'opacity-80' : 'opacity-100'}
+            relative max-w-[80%] px-4 py-2.5 shadow-sm active:scale-[0.98] transition-all
+            ${isMe 
+                ? 'bg-msg-me text-primary-fg rounded-[20px] rounded-tr-sm' 
+                : 'bg-msg-other text-text-main rounded-[20px] rounded-tl-sm'
+            } 
+            ${msg.status === 'failed' ? 'border-2 border-danger' : ''}
           `}
         >
           <MessageContent msg={msg} decryptFn={decryptFn} />
           
-          <div className={`text-[10px] mt-1.5 text-right flex items-center justify-end gap-1 ${isMe ? 'text-primary-fg/70' : 'text-text-sub'}`}>
-            <span className="font-medium tracking-wide">
+          <div className={`text-[9px] mt-1 text-right flex items-center justify-end gap-1 ${isMe ? 'text-primary-fg/80' : 'text-text-sub'}`}>
+            <span className="font-medium">
               {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
             </span>
             {isMe && (
-              <span className="flex items-center ml-0.5 opacity-90 scale-90">
-                {msg.status === 'pending' && <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
-                {msg.status === 'sent' && <span className="text-white/70"><Icons.Check /></span>}
-                {msg.status === 'delivered' && <span className="text-white/70"><Icons.DoubleCheck /></span>}
-                {msg.status === 'read' && <span className="text-blue-200"><Icons.DoubleCheck /></span>}
+              <span className="flex items-center scale-75">
+                {msg.status === 'pending' && <div className="w-2 h-2 rounded-full border-2 border-white/50 border-t-white animate-spin" />}
+                {msg.status === 'sent' && <Icons.Check />}
+                {(msg.status === 'delivered' || msg.status === 'read') && <Icons.DoubleCheck />}
               </span>
             )}
-            {msg.type === 'encrypted' && <span className="text-[8px] opacity-60 ml-1">🔒</span>}
+            {msg.type === 'encrypted' && <span className="text-[8px] opacity-70">🔒</span>}
           </div>
         </div>
       </div>
@@ -106,23 +92,20 @@ const ChatDetail: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { messages, loadMessages, sendMessage, chats, isOffline, markMessagesRead, contacts, loadContacts, decryptContent, deleteMessages } = useData();
+  const { messages, loadMessages, sendMessage, chats, markMessagesRead, contacts, loadContacts, decryptContent, deleteMessages } = useData();
   
   const [inputText, setInputText] = useState('');
   const [viewportHeight, setViewportHeight] = useState(window.visualViewport?.height || window.innerHeight);
   const [showScrollFab, setShowScrollFab] = useState(false);
   
-  // Selection State
   const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedMsgIds.size > 0;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const chatMessages = chatId ? messages[chatId] || [] : [];
   const currentChat = chats.find(c => c.chat_id === chatId);
   
-  // Resolve other user for online status
   const otherUserId = currentChat?.participants.find(p => p !== user?.user_id);
   const otherUser = contacts.find(c => c.user_id === otherUserId);
   const isOtherOnline = otherUser?.status === 'online';
@@ -148,18 +131,10 @@ const ChatDetail: React.FC = () => {
     }
   }, [chatMessages, chatId, user, markMessagesRead]);
 
-  useEffect(() => {
-      if(textareaRef.current) {
-          textareaRef.current.style.height = 'auto';
-          textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
-      }
-  }, [inputText]);
-
   const handleSend = async () => {
     if (!inputText.trim() || !chatId) return;
     const text = inputText;
     setInputText('');
-    if(textareaRef.current) textareaRef.current.focus();
     virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' });
     await sendMessage(chatId, text);
   };
@@ -176,15 +151,11 @@ const ChatDetail: React.FC = () => {
 
   // Selection Logic
   const handleMessageClick = (msg: Message) => {
-      if (isSelectionMode) {
-          toggleSelection(msg.message_id);
-      }
+      if (isSelectionMode) toggleSelection(msg.message_id);
   };
 
   const handleLongPress = (msg: Message) => {
-      if (!isSelectionMode) {
-          if(navigator.vibrate) navigator.vibrate(50);
-      }
+      if (!isSelectionMode && navigator.vibrate) navigator.vibrate(50);
       toggleSelection(msg.message_id);
   };
 
@@ -197,12 +168,6 @@ const ChatDetail: React.FC = () => {
       });
   };
 
-  const handleDelete = () => {
-      if (selectedMsgIds.size > 0) {
-          setShowDeleteModal(true);
-      }
-  };
-
   const confirmDelete = async () => {
       if (!chatId) return;
       await deleteMessages(chatId, Array.from(selectedMsgIds));
@@ -210,8 +175,7 @@ const ChatDetail: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden" style={{ height: `${viewportHeight}px` }}>
-      <style>{animationStyles}</style>
+    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden chat-bg-pattern" style={{ height: `${viewportHeight}px` }}>
       
       {isSelectionMode ? (
         <TopBar 
@@ -219,7 +183,7 @@ const ChatDetail: React.FC = () => {
             title={`${selectedMsgIds.size} Selected`}
             onBack={() => setSelectedMsgIds(new Set())}
             actions={
-                <button onClick={handleDelete} className="p-2 text-red-500 hover:bg-red-500/10 rounded-full transition-colors">
+                <button onClick={() => setShowDeleteModal(true)} className="p-2 text-danger bg-danger/10 rounded-full">
                     <Icons.Trash />
                 </button>
             }
@@ -229,14 +193,12 @@ const ChatDetail: React.FC = () => {
             className="z-30 flex-shrink-0"
             title={
             <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-surface-highlight flex items-center justify-center text-primary text-base font-bold shadow-sm border border-border">
-                    {getChatName()[0].toUpperCase()}
-                </div>
+                <Avatar name={getChatName()} size="sm" online={currentChat?.type === 'private' ? isOtherOnline : undefined} showStatus={false} />
                 <div className="flex flex-col">
-                    <span className="text-base font-bold truncate">{getChatName()}</span>
+                    <span className="text-base font-bold truncate leading-tight">{getChatName()}</span>
                     {currentChat?.type === 'private' && (
-                        <span className={`text-[11px] font-medium flex items-center gap-1 ${isOtherOnline ? 'text-green-500' : 'text-text-sub'}`}>
-                            {isOtherOnline ? 'Online' : 'Offline'}
+                        <span className={`text-[10px] font-medium flex items-center gap-1 ${isOtherOnline ? 'text-green-500' : 'text-text-sub'}`}>
+                            {isOtherOnline ? 'Active now' : 'Offline'}
                         </span>
                     )}
                 </div>
@@ -263,24 +225,17 @@ const ChatDetail: React.FC = () => {
           itemContent={(index, msg) => {
             const isMe = String(msg.sender_id) === String(user?.user_id);
             const showDate = index === 0 || msg.timestamp.substring(0,10) !== chatMessages[index-1]?.timestamp.substring(0,10);
-            
-            // Group Chat Name Logic
             const isGroup = currentChat?.type === 'group';
             const prevMsg = chatMessages[index - 1];
-            // Show name if: Group Chat AND Not Me AND (First msg OR Different Sender from prev OR Date changed)
             const showName = isGroup && !isMe && (!prevMsg || String(prevMsg.sender_id) !== String(msg.sender_id) || showDate);
             const senderName = showName ? getSenderName(msg.sender_id) : undefined;
 
             return (
                 <MessageItem 
-                    msg={msg} 
-                    isMe={isMe} 
-                    showDate={showDate} 
-                    onLongPress={handleLongPress} 
-                    onClick={handleMessageClick}
+                    msg={msg} isMe={isMe} showDate={showDate} 
+                    onLongPress={handleLongPress} onClick={handleMessageClick}
                     isSelected={selectedMsgIds.has(msg.message_id)}
-                    decryptFn={decryptContent} 
-                    senderName={senderName}
+                    decryptFn={decryptContent} senderName={senderName}
                 />
             );
           }}
@@ -288,20 +243,17 @@ const ChatDetail: React.FC = () => {
         <ScrollDownFab onClick={() => virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' })} visible={showScrollFab} />
       </div>
 
-      <div className="w-full bg-surface/90 backdrop-blur-lg border-t border-border p-3 flex-shrink-0" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
-        {currentChat?.type === 'private' && <div className="text-[10px] text-center text-text-sub opacity-70 mb-2 flex items-center justify-center gap-1"><span className="text-primary"><Icons.Check /></span> Messages are end-to-end encrypted</div>}
-        <div className="flex items-end gap-2 max-w-4xl mx-auto">
-            <div className="flex-1 rounded-[24px] bg-surface-highlight border border-border flex items-center px-4 py-1.5">
-                <textarea
-                    ref={textareaRef}
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder="Message"
-                    rows={1}
-                    className="w-full bg-transparent text-text-main text-[16px] border-none focus:ring-0 resize-none min-h-[24px] max-h-[120px] py-2"
-                />
-            </div>
-            <button onClick={handleSend} disabled={!inputText.trim()} className="w-12 h-12 rounded-full bg-primary text-primary-fg flex items-center justify-center shadow-glow">
+      <div className="w-full bg-gradient-to-t from-background via-background/95 to-transparent pt-4 pb-2 px-3 flex-shrink-0 z-20">
+        <div className="flex items-end gap-2 max-w-4xl mx-auto bg-surface/80 backdrop-blur-xl p-2 rounded-[2rem] border border-white/5 shadow-2xl mb-[env(safe-area-inset-bottom)]">
+            <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Type a message..."
+                rows={1}
+                className="flex-1 bg-transparent text-text-main text-[16px] border-none focus:ring-0 resize-none min-h-[44px] max-h-[120px] py-2.5 px-4 placeholder:text-text-sub/50"
+                style={{ height: 'auto' }}
+            />
+            <button onClick={handleSend} disabled={!inputText.trim()} className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${inputText.trim() ? 'bg-primary text-white shadow-glow' : 'bg-surface-highlight text-text-sub'}`}>
               <Icons.Send />
             </button>
         </div>
@@ -312,7 +264,7 @@ const ChatDetail: React.FC = () => {
         onClose={() => setShowDeleteModal(false)}
         onConfirm={confirmDelete}
         title="Delete Messages?"
-        message={`Are you sure you want to delete ${selectedMsgIds.size} selected message(s)? This action cannot be undone.`}
+        message={`Delete ${selectedMsgIds.size} messages?`}
         confirmText="Delete"
         isDestructive={true}
       />

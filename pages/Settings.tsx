@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useTheme, Theme } from '../context/ThemeContext';
-import { TopBar, Button, Icons, Input } from '../components/AndroidUI';
+import { TopBar, Button, Icons, Input, Avatar } from '../components/AndroidUI';
 
 const Settings: React.FC = () => {
   const { user, logout, updateName } = useAuth();
@@ -13,18 +13,16 @@ const Settings: React.FC = () => {
   
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState('');
-  const [savingName, setSavingName] = useState(false);
 
-  const themes: { id: Theme; name: string; bg: string; border: string }[] = [
-    { id: 'midnight', name: 'Midnight', bg: '#0f172a', border: 'border-slate-700' },
-    { id: 'daylight', name: 'Daylight', bg: '#f3f4f6', border: 'border-gray-200' },
-    { id: 'eclipse', name: 'Eclipse', bg: '#000000', border: 'border-zinc-800' },
+  const themes: { id: Theme; name: string; bg: string }[] = [
+    { id: 'midnight', name: 'Midnight', bg: '#0f172a' },
+    { id: 'daylight', name: 'Daylight', bg: '#f8fafc' },
+    { id: 'eclipse', name: 'Eclipse', bg: '#000000' },
   ];
 
   const handleLogout = async () => {
     setLoggingOut(true);
     await logout();
-    // No need to setLoggingOut(false) as unmount happens immediately
   };
 
   const startEdit = () => {
@@ -34,85 +32,66 @@ const Settings: React.FC = () => {
 
   const saveName = async () => {
       if(!editName.trim()) return;
-      setSavingName(true);
       await updateName(editName.trim());
-      setSavingName(false);
       setIsEditingName(false);
   };
 
   return (
     <div 
-      className="flex-1 bg-background text-text-main pb-20 overflow-y-auto pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+      className="flex-1 bg-background text-text-main pb-24 overflow-y-auto"
       style={{ paddingBottom: 'calc(7rem + env(safe-area-inset-bottom))' }}
     >
-      <TopBar title="Settings" />
+      <TopBar title="Settings" transparent />
       
       <div className="p-5 space-y-6 max-w-lg mx-auto">
         
         {/* Profile Card */}
-        <div className="bg-surface rounded-3xl p-6 border border-border shadow-sm flex flex-col items-center text-center">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-primary to-purple-500 p-0.5 mb-4 shadow-lg shadow-primary/20">
-                <div className="w-full h-full bg-surface rounded-full flex items-center justify-center text-3xl font-bold text-text-main relative">
-                    {user?.username ? user.username[0].toUpperCase() : '?'}
-                    <div className={`absolute bottom-1 right-1 w-5 h-5 rounded-full border-4 border-surface ${!isOffline ? 'bg-green-500' : 'bg-red-500'}`} />
-                </div>
+        <div className="bg-surface rounded-[32px] p-6 border border-white/5 shadow-soft flex flex-col items-center text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-primary/20 to-transparent" />
+            
+            <div className="relative z-10 mb-4">
+               <Avatar name={user?.username || '?'} size="xl" online={!isOffline} />
             </div>
             
             {isEditingName ? (
-                <div className="flex gap-2 items-center w-full max-w-[240px] mb-1">
+                <div className="flex gap-2 items-center w-full max-w-[240px] mb-2 z-10">
                     <Input 
                         value={editName} 
                         onChange={e => setEditName(e.target.value)} 
-                        className="text-center h-10 py-2 text-lg font-bold" 
+                        className="text-center h-10 py-2 text-lg font-bold bg-surface-highlight" 
                         autoFocus
                     />
-                    <button onClick={saveName} disabled={savingName} className="p-2 bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors">
-                        <Icons.Check />
-                    </button>
-                    <button onClick={() => setIsEditingName(false)} className="p-2 bg-surface-highlight text-text-sub rounded-full hover:bg-surface-highlight/80 transition-colors">
-                        <Icons.Close />
-                    </button>
+                    <button onClick={saveName} className="p-2 bg-primary text-white rounded-full"><Icons.Check /></button>
+                    <button onClick={() => setIsEditingName(false)} className="p-2 bg-surface-highlight text-text-sub rounded-full"><Icons.Close /></button>
                 </div>
             ) : (
-                <div className="flex items-center gap-2 mb-1 group relative">
+                <div className="flex items-center gap-2 mb-1 group relative z-10">
                     <h2 className="text-2xl font-bold tracking-tight">{user?.username}</h2>
-                    <button onClick={startEdit} className="opacity-50 group-hover:opacity-100 p-1.5 hover:bg-surface-highlight rounded-full transition-all text-primary">
+                    <button onClick={startEdit} className="p-1.5 bg-surface-highlight rounded-full text-text-sub hover:text-primary transition-colors">
                         <Icons.Edit />
                     </button>
                 </div>
             )}
             
-            <p className="text-text-sub font-medium">{user?.email}</p>
-            <div className={`mt-2 px-3 py-1 rounded-full text-xs font-bold ${!isOffline ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                {isOffline ? 'OFFLINE MODE' : 'CONNECTED'}
-            </div>
+            <p className="text-text-sub font-medium z-10">{user?.email}</p>
         </div>
 
         {/* Theme Switcher */}
         <div>
-            <h3 className="text-sm font-bold text-text-sub uppercase tracking-wider mb-3 ml-2">Theme</h3>
+            <h3 className="text-xs font-bold text-text-sub uppercase tracking-wider mb-4 ml-4">Appearance</h3>
             <div className="grid grid-cols-3 gap-3">
                 {themes.map((t) => (
                     <button
                         key={t.id}
                         onClick={() => setTheme(t.id)}
                         className={`
-                            relative h-24 rounded-2xl border-2 transition-all flex flex-col items-center justify-end pb-3 gap-2 overflow-hidden tap-active
-                            ${theme === t.id ? 'border-primary ring-2 ring-primary/20' : 'border-border'}
+                            relative h-20 rounded-2xl transition-all flex flex-col items-center justify-center gap-2 overflow-hidden
+                            ${theme === t.id ? 'ring-2 ring-primary scale-105 shadow-glow' : 'opacity-70 grayscale'}
                         `}
                         style={{ backgroundColor: t.bg }}
                     >
-                        {/* Preview bubbles */}
-                        <div className="absolute top-2 left-2 right-2 flex flex-col gap-1.5 opacity-50 pointer-events-none">
-                            <div className="h-2 w-2/3 bg-current rounded-full opacity-20 self-start"></div>
-                            <div className="h-2 w-1/2 bg-current rounded-full opacity-40 self-end"></div>
-                        </div>
-
-                        <span className={`text-xs font-bold z-10 ${theme === t.id ? 'text-primary' : 'text-gray-400'}`}>{t.name}</span>
-                        
-                        {theme === t.id && (
-                            <div className="absolute top-2 right-2 w-3 h-3 bg-primary rounded-full shadow-sm" />
-                        )}
+                         <span className={`text-xs font-bold ${t.id === 'daylight' ? 'text-black' : 'text-white'}`}>{t.name}</span>
+                        {theme === t.id && <div className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full" />}
                     </button>
                 ))}
             </div>
@@ -120,21 +99,17 @@ const Settings: React.FC = () => {
 
         {/* Configuration */}
         <div>
-            <h3 className="text-sm font-bold text-text-sub uppercase tracking-wider mb-3 ml-2">App Info</h3>
-            <div className="bg-surface rounded-3xl overflow-hidden border border-border shadow-sm">
-                <div className="p-4 flex justify-between items-center border-b border-border">
-                    <span className="font-semibold text-text-main">Groups Enabled</span>
-                    <div className={`w-8 h-4 rounded-full relative ${settings.enable_groups ? "bg-green-500/20" : "bg-red-500/20"}`}>
-                        <div className={`absolute top-0.5 w-3 h-3 rounded-full transition-all ${settings.enable_groups ? "right-0.5 bg-green-500" : "left-0.5 bg-red-500"}`} />
+            <h3 className="text-xs font-bold text-text-sub uppercase tracking-wider mb-4 ml-4">Preferences</h3>
+            <div className="bg-surface rounded-[28px] overflow-hidden border border-white/5 shadow-soft">
+                <div className="p-5 flex justify-between items-center border-b border-border">
+                    <span className="font-semibold text-text-main">Group Chats</span>
+                    <div className={`w-10 h-6 rounded-full relative transition-colors ${settings.enable_groups ? "bg-green-500" : "bg-surface-highlight"}`}>
+                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${settings.enable_groups ? "right-1" : "left-1"}`} />
                     </div>
                 </div>
-                 <div className="p-4 flex justify-between items-center">
-                    <span className="font-semibold text-text-main">Backend</span>
-                    <span className="text-sm text-text-sub font-mono">Firebase</span>
-                </div>
-                 <div className="p-4 flex justify-between items-center">
-                    <span className="font-semibold text-text-main">Version</span>
-                    <span className="text-sm text-text-sub">v2.3.1</span>
+                 <div className="p-5 flex justify-between items-center">
+                    <span className="font-semibold text-text-main">Backend Status</span>
+                    <span className="text-xs font-mono bg-surface-highlight px-2 py-1 rounded text-primary">Firebase v12</span>
                 </div>
             </div>
         </div>
@@ -142,6 +117,8 @@ const Settings: React.FC = () => {
         <Button onClick={handleLogout} variant="danger" className="mt-4" disabled={loggingOut}>
             {loggingOut ? 'Signing Out...' : 'Sign Out'}
         </Button>
+        
+        <p className="text-center text-[10px] text-text-sub opacity-50 pt-4">Chatlix v3.0 (Material Revamp)</p>
       </div>
     </div>
   );
