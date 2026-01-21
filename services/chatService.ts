@@ -12,7 +12,8 @@ import {
     addDoc, 
     updateDoc, 
     onSnapshot,
-    writeBatch
+    writeBatch,
+    arrayRemove
 } from 'firebase/firestore';
 import { 
     signInWithEmailAndPassword, 
@@ -205,6 +206,25 @@ export const chatService = {
       });
   },
 
+  deleteChats: async (userId: string, chatIds: string[]) => {
+      if (chatIds.length === 0) return;
+      try {
+          const batch = writeBatch(db);
+          chatIds.forEach(id => {
+              const ref = doc(db, 'chats', id);
+              // Instead of hard deleting, remove the user from participants.
+              // If participants become empty, one could technically delete the doc, 
+              // but Firestore rules usually handle cleanup or we leave it.
+              batch.update(ref, {
+                  participants: arrayRemove(userId)
+              });
+          });
+          await batch.commit();
+      } catch (e) {
+          console.error("Failed to delete chats", e);
+      }
+  },
+
   // --- MESSAGES ---
 
   subscribeToMessages: (chatId: string, limitCount: number, callback: (msgs: Message[]) => void) => {
@@ -261,6 +281,20 @@ export const chatService = {
         await batch.commit();
       } catch (e) {
           console.error("Failed to update message status", e);
+      }
+  },
+
+  deleteMessages: async (chatId: string, messageIds: string[]) => {
+      if (messageIds.length === 0) return;
+      try {
+          const batch = writeBatch(db);
+          messageIds.forEach(id => {
+              const ref = doc(db, `chats/${chatId}/messages`, id);
+              batch.delete(ref);
+          });
+          await batch.commit();
+      } catch (e) {
+          console.error("Failed to delete messages", e);
       }
   },
   

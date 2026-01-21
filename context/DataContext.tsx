@@ -22,6 +22,8 @@ interface DataContextType {
   retryFailedMessages: () => void;
   markMessagesRead: (chatId: string, messageIds: string[]) => void;
   decryptContent: (chatId: string, content: string, senderId: string) => Promise<string>;
+  deleteChats: (chatIds: string[]) => Promise<void>;
+  deleteMessages: (chatId: string, messageIds: string[]) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -233,6 +235,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await chatService.updateMessageStatus(chatId, messageIds, 'read');
   };
 
+  const deleteChats = async (chatIds: string[]) => {
+      if(!user) return;
+      await chatService.deleteChats(user.user_id, chatIds);
+  };
+
+  const deleteMessages = async (chatId: string, messageIds: string[]) => {
+      await chatService.deleteMessages(chatId, messageIds);
+  };
+
   const retryFailedMessages = () => {};
   const refreshChats = async () => {};
 
@@ -240,7 +251,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <DataContext.Provider value={{ 
         chats, messages, settings, syncing, isOffline, contacts, 
         refreshChats, loadMessages, sendMessage, retryFailedMessages, 
-        createChat, loadContacts, markMessagesRead, decryptContent
+        createChat, loadContacts, markMessagesRead, decryptContent,
+        deleteChats, deleteMessages
     }}>
       {children}
     </DataContext.Provider>
