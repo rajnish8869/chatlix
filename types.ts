@@ -1,4 +1,5 @@
 
+
 export interface User {
   user_id: string; // Matches Firebase Auth UID
   username: string;
@@ -28,7 +29,13 @@ export interface Message {
   message: string;
   type: 'text' | 'image' | 'system' | 'encrypted';
   timestamp: string;
-  status: 'sent' | 'delivered' | 'read' | 'pending' | 'failed'; 
+  status: 'sent' | 'delivered' | 'read' | 'pending' | 'failed';
+  replyTo?: {
+      message_id: string;
+      sender_id: string;
+      message: string; // Preview text
+      type: 'text' | 'image' | 'encrypted';
+  };
 }
 
 export interface AppSettings {

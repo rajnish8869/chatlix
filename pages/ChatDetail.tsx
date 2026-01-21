@@ -21,10 +21,67 @@ const MessageContent = ({ msg, decryptFn }: { msg: Message, decryptFn: any }) =>
     return <p className="text-[15px] leading-[1.5] break-words whitespace-pre-wrap">{text}</p>;
 };
 
-const MessageItem = React.memo(({ 
-    msg, isMe, showDate, onLongPress, onClick, isSelected, decryptFn, senderName, onImageClick 
+const SwipeableMessage = ({ 
+    children, onReply, isMe 
 }: { 
-    msg: Message, isMe: boolean, showDate: boolean, onLongPress: (msg: Message) => void, onClick: (msg: Message) => void, isSelected: boolean, decryptFn: any, senderName?: string, onImageClick: (url: string) => void
+    children: React.ReactNode, onReply: () => void, isMe: boolean 
+}) => {
+    const [translateX, setTranslateX] = useState(0);
+    const startX = useRef<number | null>(null);
+    const threshold = 50;
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        startX.current = e.touches[0].clientX;
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (startX.current === null) return;
+        const diff = e.touches[0].clientX - startX.current;
+        
+        // Only allow swiping right
+        if (diff > 0 && diff < 100) {
+            setTranslateX(diff);
+        }
+    };
+
+    const handleTouchEnd = () => {
+        if (translateX > threshold) {
+            if(navigator.vibrate) navigator.vibrate(50);
+            onReply();
+        }
+        setTranslateX(0);
+        startX.current = null;
+    };
+
+    return (
+        <div 
+            className="relative" 
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+        >
+            <div 
+                className="absolute left-[-40px] top-1/2 -translate-y-1/2 transition-opacity duration-200 text-primary"
+                style={{ opacity: Math.min(translateX / threshold, 1), transform: `translateY(-50%) scale(${Math.min(translateX / threshold, 1)})` }}
+            >
+                <div className="bg-surface-highlight p-2 rounded-full shadow-sm">
+                    <Icons.Reply className="w-5 h-5" />
+                </div>
+            </div>
+            <div 
+                className="transition-transform duration-200 ease-out will-change-transform"
+                style={{ transform: `translateX(${translateX}px)` }}
+            >
+                {children}
+            </div>
+        </div>
+    );
+};
+
+const MessageItem = React.memo(({ 
+    msg, isMe, showDate, onLongPress, onClick, isSelected, decryptFn, senderName, onImageClick, onReply, onScrollTo
+}: { 
+    msg: Message, isMe: boolean, showDate: boolean, onLongPress: (msg: Message) => void, onClick: (msg: Message) => void, isSelected: boolean, decryptFn: any, senderName?: string, onImageClick: (url: string) => void, onReply: (msg: Message) => void, onScrollTo: (id: string) => void
 }) => {
   const touchTimer = useRef<any>(undefined);
 
@@ -39,67 +96,87 @@ const MessageItem = React.memo(({
   };
 
   return (
-    <div className={`px-4 animate-fade-in transition-colors ${isSelected ? 'bg-primary/10 -mx-4 px-8 py-2' : ''}`}>
-      {showDate && (
-        <div className="flex justify-center py-6">
-          <span className="text-[10px] font-bold tracking-wide text-text-sub bg-surface/80 backdrop-blur border border-white/5 px-3 py-1 rounded-full shadow-sm">
-            {new Date(msg.timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
-          </span>
-        </div>
-      )}
-      <div 
-        className={`flex flex-col mb-2 ${isMe ? 'items-end' : 'items-start'}`}
-        onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={handleTouchStart} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd}
-        onClick={() => onClick(msg)}
-      >
-        {senderName && (
-             <span className={`text-[11px] font-bold mb-1 ml-3 block max-w-[80%] truncate ${getNameColor(senderName)}`}>
-                {senderName}
-             </span>
-        )}
-
-        <div className={`
-            relative max-w-[80%] shadow-sm active:scale-[0.98] transition-all
-            ${isMe 
-                ? 'bg-msg-me text-white rounded-[24px] rounded-tr-sm shadow-primary/20' 
-                : 'bg-msg-other text-text-main rounded-[24px] rounded-tl-sm border border-white/5'
-            } 
-            ${msg.status === 'failed' ? 'border-2 border-danger' : ''}
-            ${msg.type === 'image' ? 'p-1' : 'px-5 py-3'} 
-          `}
-        >
-          {msg.type === 'image' ? (
-              <img 
-                src={msg.message} 
-                alt="Attachment" 
-                className="rounded-[20px] max-w-full h-auto cursor-pointer" 
-                style={{ maxHeight: '300px' }}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onImageClick(msg.message);
-                }}
-              />
-          ) : (
-             <MessageContent msg={msg} decryptFn={decryptFn} />
-          )}
-          
-          <div className={`text-[9px] mt-1.5 text-right flex items-center justify-end gap-1 ${isMe ? 'text-white/70' : 'text-text-sub'} ${msg.type === 'image' ? 'pr-2 pb-1' : ''}`}>
-            <span className="font-medium">
-              {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+    <SwipeableMessage onReply={() => onReply(msg)} isMe={isMe}>
+        <div className={`px-4 animate-fade-in transition-colors ${isSelected ? 'bg-primary/10 -mx-4 px-8 py-2' : ''}`}>
+        {showDate && (
+            <div className="flex justify-center py-6">
+            <span className="text-[10px] font-bold tracking-wide text-text-sub bg-surface/80 backdrop-blur border border-white/5 px-3 py-1 rounded-full shadow-sm">
+                {new Date(msg.timestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
             </span>
-            {isMe && (
-              <span className="flex items-center gap-0.5 ml-1">
-                {msg.status === 'pending' && <div className="w-2.5 h-2.5 rounded-full border-[1.5px] border-white/50 border-t-white animate-spin" />}
-                {msg.status === 'sent' && <Icons.Check className="w-3.5 h-3.5 text-white/60" />}
-                {msg.status === 'delivered' && <Icons.DoubleCheck className="w-3.5 h-3.5 text-white/60" />}
-                {msg.status === 'read' && <Icons.DoubleCheck className="w-3.5 h-3.5 text-cyan-300" />}
-              </span>
+            </div>
+        )}
+        <div 
+            className={`flex flex-col mb-2 ${isMe ? 'items-end' : 'items-start'}`}
+            onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={handleTouchStart} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd}
+            onClick={() => onClick(msg)}
+        >
+            {senderName && (
+                <span className={`text-[11px] font-bold mb-1 ml-3 block max-w-[80%] truncate ${getNameColor(senderName)}`}>
+                    {senderName}
+                </span>
             )}
-            {msg.type === 'encrypted' && <span className="text-[8px] opacity-70"><Icons.Lock /></span>}
-          </div>
+
+            <div className={`
+                relative max-w-[80%] shadow-sm active:scale-[0.98] transition-all flex flex-col
+                ${isMe 
+                    ? 'bg-msg-me text-white rounded-[24px] rounded-tr-sm shadow-primary/20' 
+                    : 'bg-msg-other text-text-main rounded-[24px] rounded-tl-sm border border-white/5'
+                } 
+                ${msg.status === 'failed' ? 'border-2 border-danger' : ''}
+                ${msg.type === 'image' ? 'p-1' : 'px-5 py-3'} 
+            `}
+            >
+            {/* Reply Quote Block */}
+            {msg.replyTo && (
+                <div 
+                    onClick={(e) => { e.stopPropagation(); onScrollTo(msg.replyTo!.message_id); }}
+                    className={`
+                        mb-2 rounded-lg p-2 border-l-4 cursor-pointer text-xs
+                        ${isMe ? 'bg-black/10 border-white/30' : 'bg-surface-highlight border-primary/50'}
+                    `}
+                >
+                    <span className={`font-bold block mb-0.5 opacity-90`}>
+                        Reply
+                    </span>
+                    <span className="opacity-70 line-clamp-1 truncate">
+                        {msg.replyTo.type === 'image' ? '📷 Photo' : msg.replyTo.message}
+                    </span>
+                </div>
+            )}
+
+            {msg.type === 'image' ? (
+                <img 
+                    src={msg.message} 
+                    alt="Attachment" 
+                    className="rounded-[20px] max-w-full h-auto cursor-pointer" 
+                    style={{ maxHeight: '300px' }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onImageClick(msg.message);
+                    }}
+                />
+            ) : (
+                <MessageContent msg={msg} decryptFn={decryptFn} />
+            )}
+            
+            <div className={`text-[9px] mt-1.5 text-right flex items-center justify-end gap-1 ${isMe ? 'text-white/70' : 'text-text-sub'} ${msg.type === 'image' ? 'pr-2 pb-1' : ''}`}>
+                <span className="font-medium">
+                {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                </span>
+                {isMe && (
+                <span className="flex items-center gap-0.5 ml-1">
+                    {msg.status === 'pending' && <div className="w-2.5 h-2.5 rounded-full border-[1.5px] border-white/50 border-t-white animate-spin" />}
+                    {msg.status === 'sent' && <Icons.Check className="w-3.5 h-3.5 text-white/60" />}
+                    {msg.status === 'delivered' && <Icons.DoubleCheck className="w-3.5 h-3.5 text-white/60" />}
+                    {msg.status === 'read' && <Icons.DoubleCheck className="w-3.5 h-3.5 text-cyan-300" />}
+                </span>
+                )}
+                {msg.type === 'encrypted' && <span className="text-[8px] opacity-70"><Icons.Lock /></span>}
+            </div>
+            </div>
         </div>
-      </div>
-    </div>
+        </div>
+    </SwipeableMessage>
   );
 });
 
@@ -123,6 +200,10 @@ const ChatDetail: React.FC = () => {
   const isSelectionMode = selectedMsgIds.size > 0;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  // Reply State
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [replyPreview, setReplyPreview] = useState<string>('');
+
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const chatMessages = chatId ? messages[chatId] || [] : [];
   const currentChat = chats.find(c => c.chat_id === chatId);
@@ -144,26 +225,62 @@ const ChatDetail: React.FC = () => {
     }
   }, [chatId, loadMessages, loadContacts]);
 
-  // Mark chat as read when opening or when new messages arrive while open
   useEffect(() => {
     if (!chatId || !user) return;
-    
-    // Initial read
     markChatAsRead(chatId);
-
-    // Watch for unread messages (real-time updates)
     const hasUnread = chatMessages.some(m => String(m.sender_id) !== String(user.user_id) && m.status !== 'read');
     if (hasUnread) {
         markChatAsRead(chatId);
     }
   }, [chatMessages, chatId, user, markChatAsRead]);
 
+  // Decrypt reply preview on selection
+  useEffect(() => {
+    let isMounted = true;
+    const preparePreview = async () => {
+        if (!replyingTo) {
+            if (isMounted) setReplyPreview('');
+            return;
+        }
+
+        if (replyingTo.type === 'image') {
+            if (isMounted) setReplyPreview('📷 Photo');
+        } else if (replyingTo.type === 'encrypted') {
+            try {
+                const text = await decryptContent(chatId!, replyingTo.message, replyingTo.sender_id);
+                if (isMounted) setReplyPreview(text);
+            } catch (e) {
+                if (isMounted) setReplyPreview('Encrypted Message');
+            }
+        } else {
+            if (isMounted) setReplyPreview(replyingTo.message);
+        }
+    };
+    preparePreview();
+    return () => { isMounted = false; };
+  }, [replyingTo, chatId, decryptContent]);
+
   const handleSend = async () => {
     if (!inputText.trim() || !chatId) return;
     const text = inputText;
+    
+    // Construct replyTo object if replying
+    let replyPayload = undefined;
+    if (replyingTo) {
+        replyPayload = {
+            message_id: replyingTo.message_id,
+            sender_id: replyingTo.sender_id,
+            message: replyPreview.substring(0, 100),
+            type: replyingTo.type
+        };
+    }
+
     setInputText('');
+    setReplyingTo(null);
+    setReplyPreview('');
     virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' });
-    await sendMessage(chatId, text);
+    
+    await sendMessage(chatId, text, replyPayload);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,7 +290,6 @@ const ChatDetail: React.FC = () => {
           virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' });
           await sendImage(chatId, file);
           setIsUploading(false);
-          // Reset input
           if (fileInputRef.current) fileInputRef.current.value = '';
       }
   };
@@ -217,6 +333,22 @@ const ChatDetail: React.FC = () => {
       setViewerOpen(true);
   };
 
+  const handleReplyFromSelection = () => {
+      if (selectedMsgIds.size !== 1) return;
+      const msgId = Array.from(selectedMsgIds)[0];
+      const msg = chatMessages.find(m => m.message_id === msgId);
+      if (msg) setReplyingTo(msg);
+      setSelectedMsgIds(new Set());
+  };
+
+  const scrollToMessage = (msgId: string) => {
+      const index = chatMessages.findIndex(m => m.message_id === msgId);
+      if (index !== -1 && virtuosoRef.current) {
+          virtuosoRef.current.scrollToIndex({ index, align: 'center', behavior: 'smooth' });
+          // Highlight effect could go here
+      }
+  };
+
   return (
     <div className="fixed inset-0 flex flex-col bg-background overflow-hidden chat-bg-pattern" style={{ height: `${viewportHeight}px` }}>
       
@@ -226,9 +358,16 @@ const ChatDetail: React.FC = () => {
             title={`${selectedMsgIds.size} Selected`}
             onBack={() => setSelectedMsgIds(new Set())}
             actions={
-                <button onClick={() => setShowDeleteModal(true)} className="p-2 text-danger bg-danger/10 rounded-full transition-colors hover:bg-danger/20">
-                    <Icons.Trash />
-                </button>
+                <div className="flex items-center gap-1">
+                    {selectedMsgIds.size === 1 && (
+                        <button onClick={handleReplyFromSelection} className="p-2 text-primary hover:bg-primary/10 rounded-full">
+                            <Icons.Reply />
+                        </button>
+                    )}
+                    <button onClick={() => setShowDeleteModal(true)} className="p-2 text-danger hover:bg-danger/10 rounded-full">
+                        <Icons.Trash />
+                    </button>
+                </div>
             }
         />
       ) : (
@@ -281,6 +420,8 @@ const ChatDetail: React.FC = () => {
                     isSelected={selectedMsgIds.has(msg.message_id)}
                     decryptFn={decryptContent} senderName={senderName}
                     onImageClick={openImage}
+                    onReply={setReplyingTo}
+                    onScrollTo={scrollToMessage}
                 />
             );
           }}
@@ -289,7 +430,21 @@ const ChatDetail: React.FC = () => {
       </div>
 
       <div className="w-full pt-2 pb-2 px-3 flex-shrink-0 z-20">
-        <div className="flex items-end gap-2 max-w-4xl mx-auto bg-surface/80 backdrop-blur-xl p-2 rounded-[28px] border border-white/10 shadow-lg mb-[env(safe-area-inset-bottom)]">
+        
+        {/* Reply Preview Bar */}
+        {replyingTo && (
+            <div className="max-w-4xl mx-auto bg-surface/90 backdrop-blur-xl border border-white/10 rounded-t-2xl p-3 flex items-center justify-between mb-[-10px] pb-5 animate-slide-up shadow-lg">
+                <div className="flex flex-col border-l-4 border-primary pl-3 flex-1 min-w-0">
+                    <span className="text-primary font-bold text-xs mb-0.5">Replying to {getSenderName(replyingTo.sender_id)}</span>
+                    <span className="text-text-sub text-sm truncate">{replyPreview}</span>
+                </div>
+                <button onClick={() => setReplyingTo(null)} className="p-2 text-text-sub hover:bg-surface-highlight rounded-full">
+                    <Icons.Close />
+                </button>
+            </div>
+        )}
+
+        <div className={`flex items-end gap-2 max-w-4xl mx-auto bg-surface/80 backdrop-blur-xl p-2 border border-white/10 shadow-lg mb-[env(safe-area-inset-bottom)] transition-all ${replyingTo ? 'rounded-b-[28px] rounded-t-none border-t-0' : 'rounded-[28px]'}`}>
             <input 
                 type="file" 
                 ref={fileInputRef} 

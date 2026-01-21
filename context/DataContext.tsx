@@ -16,7 +16,7 @@ interface DataContextType {
   contacts: User[];
   refreshChats: () => Promise<void>;
   loadMessages: (chatId: string, beforeTimestamp?: string) => Promise<void>;
-  sendMessage: (chatId: string, text: string) => Promise<void>;
+  sendMessage: (chatId: string, text: string, replyTo?: Message['replyTo']) => Promise<void>;
   sendImage: (chatId: string, file: File) => Promise<void>;
   createChat: (participants: string[], groupName?: string) => Promise<string | null>;
   loadContacts: () => Promise<void>;
@@ -208,7 +208,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [user]);
 
-  const sendMessage = async (chatId: string, text: string) => {
+  const sendMessage = async (chatId: string, text: string, replyTo?: Message['replyTo']) => {
     if (!user || !text.trim()) return;
     
     let content = text;
@@ -226,7 +226,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }
 
-    await chatService.sendMessage(chatId, user.user_id, content, type);
+    await chatService.sendMessage(chatId, user.user_id, content, type, replyTo);
   };
 
   const sendImage = async (chatId: string, file: File) => {

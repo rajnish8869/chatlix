@@ -322,10 +322,16 @@ export const chatService = {
       });
   },
 
-  sendMessage: async (chatId: string, senderId: string, content: string, type: 'text' | 'encrypted' | 'image' = 'text'): Promise<ApiResponse<Message>> => {
+  sendMessage: async (
+      chatId: string, 
+      senderId: string, 
+      content: string, 
+      type: 'text' | 'encrypted' | 'image' = 'text',
+      replyTo?: Message['replyTo']
+  ): Promise<ApiResponse<Message>> => {
     try {
       const timestamp = new Date().toISOString();
-      const msgData = {
+      const msgData: any = {
           chat_id: chatId,
           sender_id: senderId,
           message: content, // For type='image', this is the Base64 string
@@ -333,6 +339,10 @@ export const chatService = {
           timestamp: timestamp,
           status: 'sent'
       };
+
+      if (replyTo) {
+          msgData.replyTo = replyTo;
+      }
 
       const msgRef = await addDoc(collection(db, `chats/${chatId}/messages`), msgData);
       
@@ -375,8 +385,6 @@ export const chatService = {
 
   markChatDelivered: async (chatId: string, userId: string) => {
     try {
-      // Find all messages that are currently 'sent' (not delivered yet).
-      // We filter sender_id in memory to avoid requiring a composite index [status, sender_id].
       const q = query(
         collection(db, `chats/${chatId}/messages`),
         where('status', '==', 'sent')
@@ -393,7 +401,6 @@ export const chatService = {
       let count = 0;
 
       snapshot.docs.forEach((docSnap) => {
-        // Skip own messages
         if (docSnap.data().sender_id === userId) return;
 
         batch.update(docSnap.ref, { status: 'delivered' });
@@ -415,8 +422,6 @@ export const chatService = {
 
   markChatRead: async (chatId: string, userId: string) => {
     try {
-      // Find all messages that are NOT read (sent or delivered).
-      // We filter sender_id in memory to avoid requiring a composite index [status, sender_id].
       const q = query(
         collection(db, `chats/${chatId}/messages`),
         where('status', 'in', ['sent', 'delivered'])
@@ -433,7 +438,6 @@ export const chatService = {
       let count = 0;
 
       snapshot.docs.forEach((docSnap) => {
-        // Skip own messages
         if (docSnap.data().sender_id === userId) return;
 
         batch.update(docSnap.ref, { status: 'read' });
