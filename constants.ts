@@ -20,4 +20,4 @@ export const DEFAULT_SETTINGS = {
   announcement: "",
 };
 
-export const APP_NAME = "SheetChat";
+export const APP_NAME = "Chatlix";

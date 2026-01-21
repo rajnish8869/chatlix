@@ -42,7 +42,7 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-background transition-colors">
       <div className="w-full max-w-sm flex flex-col gap-6">
         <div className="text-center">
-            <h1 className="text-4xl font-extrabold mb-2 text-primary tracking-tight">SheetChat</h1>
+            <h1 className="text-4xl font-extrabold mb-2 text-primary tracking-tight">Chatlix</h1>
             <p className="text-text-sub font-medium">
                 {isLogin ? "Welcome back" : "Create your account"}
             </p>
