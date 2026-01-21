@@ -107,7 +107,7 @@ const ChatDetail: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { messages, loadMessages, sendMessage, sendImage, chats, markMessagesRead, contacts, loadContacts, decryptContent, deleteMessages } = useData();
+  const { messages, loadMessages, sendMessage, sendImage, chats, markChatAsRead, contacts, loadContacts, decryptContent, deleteMessages } = useData();
   
   const [inputText, setInputText] = useState('');
   const [viewportHeight, setViewportHeight] = useState(window.visualViewport?.height || window.innerHeight);
@@ -144,13 +144,19 @@ const ChatDetail: React.FC = () => {
     }
   }, [chatId, loadMessages, loadContacts]);
 
+  // Mark chat as read when opening or when new messages arrive while open
   useEffect(() => {
     if (!chatId || !user) return;
-    const unreadMessages = chatMessages.filter(m => String(m.sender_id) !== String(user.user_id) && m.status !== 'read');
-    if (unreadMessages.length > 0) {
-        markMessagesRead(chatId, unreadMessages.map(m => m.message_id));
+    
+    // Initial read
+    markChatAsRead(chatId);
+
+    // Watch for unread messages (real-time updates)
+    const hasUnread = chatMessages.some(m => String(m.sender_id) !== String(user.user_id) && m.status !== 'read');
+    if (hasUnread) {
+        markChatAsRead(chatId);
     }
-  }, [chatMessages, chatId, user, markMessagesRead]);
+  }, [chatMessages, chatId, user, markChatAsRead]);
 
   const handleSend = async () => {
     if (!inputText.trim() || !chatId) return;

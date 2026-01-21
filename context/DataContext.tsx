@@ -21,7 +21,7 @@ interface DataContextType {
   createChat: (participants: string[], groupName?: string) => Promise<string | null>;
   loadContacts: () => Promise<void>;
   retryFailedMessages: () => void;
-  markMessagesRead: (chatId: string, messageIds: string[]) => void;
+  markChatAsRead: (chatId: string) => Promise<void>;
   decryptContent: (chatId: string, content: string, senderId: string) => Promise<string>;
   deleteChats: (chatIds: string[]) => Promise<void>;
   deleteMessages: (chatId: string, messageIds: string[]) => Promise<void>;
@@ -73,12 +73,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setChats(newChats);
         setSyncing(false);
 
-        // Auto-mark delivered if I am receiving them
+        // --- Automatic Delivery Receipt Logic ---
+        // Iterate through chats. If there's an incoming message that is just 'sent' (not delivered),
+        // we mark it as delivered because the app has successfully fetched the chat list.
         newChats.forEach(chat => {
             if (chat.last_message && 
                 chat.last_message.sender_id !== user.user_id && 
                 chat.last_message.status === 'sent') {
-                 chatService.markAs(chat.chat_id, chat.last_message.message_id, 'delivered');
+                 // Call the service to mark all pending messages in this chat as delivered
+                 chatService.markChatDelivered(chat.chat_id, user.user_id);
             }
         });
     });
@@ -202,11 +205,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 100, (msgs) => {
         setMessages(prev => ({ ...prev, [chatId]: msgs }));
-        
-        const unreadByMe = msgs.filter(m => m.sender_id !== user?.user_id && m.status === 'sent');
-        if (unreadByMe.length > 0) {
-            chatService.updateMessageStatus(chatId, unreadByMe.map(m => m.message_id), 'delivered');
-        }
     });
   }, [user]);
 
@@ -241,9 +239,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   };
 
-  const markMessagesRead = async (chatId: string, messageIds: string[]) => {
-      if (messageIds.length === 0) return;
-      await chatService.updateMessageStatus(chatId, messageIds, 'read');
+  const markChatAsRead = async (chatId: string) => {
+      if (!user) return;
+      await chatService.markChatRead(chatId, user.user_id);
   };
 
   const deleteChats = async (chatIds: string[]) => {
@@ -262,7 +260,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <DataContext.Provider value={{ 
         chats, messages, settings, syncing, isOffline, contacts, 
         refreshChats, loadMessages, sendMessage, sendImage, retryFailedMessages, 
-        createChat, loadContacts, markMessagesRead, decryptContent,
+        createChat, loadContacts, markChatAsRead, decryptContent,
         deleteChats, deleteMessages
     }}>
       {children}

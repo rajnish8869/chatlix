@@ -357,8 +357,7 @@ export const chatService = {
             batch.update(ref, { status: status });
         });
 
-        // Also update the chat last_message if relevant to ensure list view is consistent
-        // We read the chat doc to check if we need to update its status.
+        // Also update the chat last_message if relevant
         const chatRef = doc(db, 'chats', chatId);
         const chatSnap = await getDoc(chatRef);
         if (chatSnap.exists()) {
@@ -372,6 +371,73 @@ export const chatService = {
       } catch (e) {
           console.error("Failed to update message status", e);
       }
+  },
+
+  markChatDelivered: async (chatId: string, userId: string) => {
+    try {
+      // Find all messages sent by OTHERS that are currently 'sent' (not delivered yet)
+      const q = query(
+        collection(db, `chats/${chatId}/messages`),
+        where('sender_id', '!=', userId),
+        where('status', '==', 'sent')
+      );
+      
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return;
+
+      const batch = writeBatch(db);
+      const chatRef = doc(db, 'chats', chatId);
+      const chatSnap = await getDoc(chatRef);
+      const lastMsgId = chatSnap.exists() ? chatSnap.data()?.last_message?.message_id : null;
+      let updateChatLastMessage = false;
+
+      snapshot.docs.forEach((doc) => {
+        batch.update(doc.ref, { status: 'delivered' });
+        // If we are updating the message that is also the last_message, update chat doc too
+        if (lastMsgId === doc.id) updateChatLastMessage = true;
+      });
+
+      if (updateChatLastMessage) {
+        batch.update(chatRef, { 'last_message.status': 'delivered' });
+      }
+
+      await batch.commit();
+    } catch (e) {
+      console.error("markChatDelivered failed", e);
+    }
+  },
+
+  markChatRead: async (chatId: string, userId: string) => {
+    try {
+      // Find all messages sent by OTHERS that are NOT read (sent or delivered)
+      const q = query(
+        collection(db, `chats/${chatId}/messages`),
+        where('sender_id', '!=', userId),
+        where('status', 'in', ['sent', 'delivered'])
+      );
+      
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return;
+
+      const batch = writeBatch(db);
+      const chatRef = doc(db, 'chats', chatId);
+      const chatSnap = await getDoc(chatRef);
+      const lastMsgId = chatSnap.exists() ? chatSnap.data()?.last_message?.message_id : null;
+      let updateChatLastMessage = false;
+
+      snapshot.docs.forEach((doc) => {
+        batch.update(doc.ref, { status: 'read' });
+        if (lastMsgId === doc.id) updateChatLastMessage = true;
+      });
+
+      if (updateChatLastMessage) {
+        batch.update(chatRef, { 'last_message.status': 'read' });
+      }
+
+      await batch.commit();
+    } catch (e) {
+      console.error("markChatRead failed", e);
+    }
   },
 
   deleteMessages: async (chatId: string, messageIds: string[]) => {
