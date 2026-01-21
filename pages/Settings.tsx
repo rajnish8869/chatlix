@@ -6,7 +6,7 @@ import { TopBar, Button } from '../components/AndroidUI';
 
 const Settings: React.FC = () => {
   const { user, logout } = useAuth();
-  const { settings } = useData();
+  const { settings, isOffline } = useData();
   const { theme, setTheme } = useTheme();
 
   const themes: { id: Theme; name: string; bg: string; border: string }[] = [
@@ -27,12 +27,16 @@ const Settings: React.FC = () => {
         {/* Profile Card */}
         <div className="bg-surface rounded-3xl p-6 border border-border shadow-sm flex flex-col items-center text-center">
             <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-primary to-purple-500 p-0.5 mb-4 shadow-lg shadow-primary/20">
-                <div className="w-full h-full bg-surface rounded-full flex items-center justify-center text-3xl font-bold text-text-main">
+                <div className="w-full h-full bg-surface rounded-full flex items-center justify-center text-3xl font-bold text-text-main relative">
                     {user?.username[0].toUpperCase()}
+                    <div className={`absolute bottom-1 right-1 w-5 h-5 rounded-full border-4 border-surface ${!isOffline ? 'bg-green-500' : 'bg-red-500'}`} />
                 </div>
             </div>
             <h2 className="text-2xl font-bold tracking-tight">{user?.username}</h2>
             <p className="text-text-sub font-medium">{user?.email}</p>
+            <div className={`mt-2 px-3 py-1 rounded-full text-xs font-bold ${!isOffline ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                {isOffline ? 'OFFLINE MODE' : 'CONNECTED'}
+            </div>
         </div>
 
         {/* Theme Switcher */}
@@ -67,21 +71,21 @@ const Settings: React.FC = () => {
 
         {/* Configuration */}
         <div>
-            <h3 className="text-sm font-bold text-text-sub uppercase tracking-wider mb-3 ml-2">App Data</h3>
+            <h3 className="text-sm font-bold text-text-sub uppercase tracking-wider mb-3 ml-2">App Info</h3>
             <div className="bg-surface rounded-3xl overflow-hidden border border-border shadow-sm">
                 <div className="p-4 flex justify-between items-center border-b border-border">
-                    <span className="font-semibold text-text-main">Sync Rate</span>
-                    <span className="text-xs font-bold bg-secondary px-3 py-1.5 rounded-full text-text-main">{settings.polling_interval / 1000}s</span>
-                </div>
-                <div className="p-4 flex justify-between items-center border-b border-border">
-                    <span className="font-semibold text-text-main">Groups</span>
+                    <span className="font-semibold text-text-main">Groups Enabled</span>
                     <div className={`w-8 h-4 rounded-full relative ${settings.enable_groups ? "bg-green-500/20" : "bg-red-500/20"}`}>
                         <div className={`absolute top-0.5 w-3 h-3 rounded-full transition-all ${settings.enable_groups ? "right-0.5 bg-green-500" : "left-0.5 bg-red-500"}`} />
                     </div>
                 </div>
                  <div className="p-4 flex justify-between items-center">
+                    <span className="font-semibold text-text-main">Backend</span>
+                    <span className="text-sm text-text-sub font-mono">Firebase</span>
+                </div>
+                 <div className="p-4 flex justify-between items-center">
                     <span className="font-semibold text-text-main">Version</span>
-                    <span className="text-sm text-text-sub">v2.1.0</span>
+                    <span className="text-sm text-text-sub">v2.3.0</span>
                 </div>
             </div>
         </div>

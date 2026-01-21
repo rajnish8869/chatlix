@@ -1,9 +1,9 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { User } from '../types';
-import { sheetService } from '../services/sheetService';
+import { chatService } from '../services/chatService';
 import { auth, db } from '../services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -28,6 +28,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
                 if (userDoc.exists()) {
                     setUser(userDoc.data() as User);
+                    
+                    // Set online
+                    updateDoc(doc(db, 'users', currentUser.uid), {
+                        status: 'online',
+                        last_seen: new Date().toISOString()
+                    }).catch(e => console.error("Error updating online status", e));
+
                 } else {
                     // Fallback if doc missing
                      setUser({
@@ -41,8 +48,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             } catch (e) {
                 console.error("Error fetching user profile", e);
+                setUser({
+                    user_id: currentUser.uid,
+                    username: currentUser.displayName || 'User',
+                    email: currentUser.email || '',
+                    status: 'offline',
+                    last_seen: new Date().toISOString(),
+                    is_blocked: false
+                });
             }
         } else {
+            // Set offline if we had a user
+            if (user) {
+                // Note: This often doesn't fire on tab close, but works on explicit logout
+                // Use 'onDisconnect' in Realtime Database for true presence, or Firestore listeners
+            }
             setUser(null);
         }
         setIsLoading(false);
@@ -51,15 +71,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password: string): Promise<{success: boolean, error?: string}> => {
-    return sheetService.login(email, password);
+    return chatService.login(email, password);
   };
 
   const signup = async (username: string, email: string, password: string): Promise<{success: boolean, error?: string}> => {
-    return sheetService.signup(username, email, password);
+    return chatService.signup(username, email, password);
   };
 
   const logout = async () => {
     try {
+        if (user) {
+             // Set offline before signing out
+             await updateDoc(doc(db, 'users', user.user_id), {
+                status: 'offline',
+                last_seen: new Date().toISOString()
+            }).catch(console.error);
+        }
         await signOut(auth);
         setUser(null);
     } catch (e) {

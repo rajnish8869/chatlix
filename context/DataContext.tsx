@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Chat, Message, AppSettings, User } from '../types';
 import { useAuth } from './AuthContext';
-import { sheetService } from '../services/sheetService';
+import { chatService } from '../services/chatService';
 import { DEFAULT_SETTINGS } from '../constants';
 import { Unsubscribe } from 'firebase/firestore';
 
@@ -28,7 +28,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [chats, setChats] = useState<Chat[]>([]);
   const [contacts, setContacts] = useState<User[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
-  const [settings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [syncing, setSyncing] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
@@ -56,9 +56,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setSyncing(true);
-    chatsUnsub.current = sheetService.subscribeToChats(user.user_id, (newChats) => {
+    chatsUnsub.current = chatService.subscribeToChats(user.user_id, (newChats) => {
         setChats(newChats);
         setSyncing(false);
+    });
+
+    // Fetch settings
+    chatService.fetchSettings().then(res => {
+        if(res.success && res.data) setSettings(res.data);
     });
 
     return () => {
@@ -75,7 +80,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadContacts = useCallback(async () => {
     if(!user) return;
     try {
-        const response = await sheetService.fetchContacts(user.user_id);
+        const response = await chatService.fetchContacts(user.user_id);
         if (response.success && response.data) {
             setContacts(response.data);
         }
@@ -87,7 +92,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const createChat = async (participants: string[]): Promise<string | null> => {
     if (!user) return null;
     const allParticipants = Array.from(new Set([...participants, user.user_id]));
-    const response = await sheetService.createChat(user.user_id, allParticipants);
+    const response = await chatService.createChat(user.user_id, allParticipants);
     return response.success && response.data ? response.data.chat_id : null;
   };
 
@@ -95,13 +100,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadMessages = useCallback(async (chatId: string, beforeTimestamp?: string) => {
     // If we are already subscribed, do nothing (or implement pagination logic if beforeTimestamp is present)
     if (messageUnsubs.current[chatId]) {
-        // Here you would handle pagination (loading older messages)
-        // For this implementation, we simply assume the listener handles the visible window
         return;
     }
 
     // Subscribe to this chat
-    messageUnsubs.current[chatId] = sheetService.subscribeToMessages(chatId, 50, (msgs) => {
+    messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 50, (msgs) => {
         setMessages(prev => ({
             ...prev,
             [chatId]: msgs
@@ -118,10 +121,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const sendMessage = async (chatId: string, text: string) => {
     if (!user || !text.trim()) return;
-
-    // Optimistic UI handled by Firestore SDK mostly, but we can do manual if needed.
-    // We'll let the listener update the UI for consistent state.
-    await sheetService.sendMessage(chatId, user.user_id, text);
+    await chatService.sendMessage(chatId, user.user_id, text);
   };
 
   const markMessagesRead = async (chatId: string, messageIds: string[]) => {
@@ -133,7 +133,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               [chatId]: list.map(m => messageIds.includes(m.message_id) ? { ...m, status: 'read' } : m)
           }
       });
-      sheetService.updateMessageStatus(chatId, messageIds, 'read');
+      chatService.updateMessageStatus(chatId, messageIds, 'read');
   };
 
   const retryFailedMessages = () => {};

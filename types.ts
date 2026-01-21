@@ -28,7 +28,6 @@ export interface Message {
 }
 
 export interface AppSettings {
-  polling_interval: number;
   max_message_length: number;
   enable_groups: boolean;
   maintenance_mode: boolean;

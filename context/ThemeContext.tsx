@@ -11,9 +11,10 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<Theme>('midnight');
+  const STORAGE_KEY = 'chatlix_theme';
 
   useEffect(() => {
-    const saved = localStorage.getItem('sheet_chat_theme') as Theme;
+    const saved = localStorage.getItem(STORAGE_KEY) as Theme;
     if (saved) {
         setThemeState(saved);
         document.documentElement.setAttribute('data-theme', saved);
@@ -22,7 +23,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem('sheet_chat_theme', newTheme);
+    localStorage.setItem(STORAGE_KEY, newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
   };
 

@@ -1,5 +1,5 @@
 {
   "name": "Chatlix",
-  "description": "An Android-first chat application using Google Sheets as a backend, featuring offline syncing, material design, and secure authentication.",
+  "description": "An Android-first chat application using Firebase as a backend, featuring offline syncing, material design, and secure authentication.",
   "requestFramePermissions": []
 }
