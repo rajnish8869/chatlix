@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -10,6 +11,7 @@ import ChatInfo from './pages/ChatInfo';
 import Settings from './pages/Settings';
 import NewChat from './pages/NewChat';
 import { BottomNav } from './components/AndroidUI';
+import { App as CapacitorApp } from '@capacitor/app';
 
 // Wrapper to handle layout logic that depends on hooks
 const AppLayout: React.FC = () => {
@@ -61,16 +63,42 @@ const AndroidBackButtonHandler = () => {
   const location = useLocation();
 
   React.useEffect(() => {
+    // 1. Handle Hardware Back Button (Android)
+    let backButtonListener: any;
+    
+    const setupListener = async () => {
+        try {
+            backButtonListener = await CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+                // Determine if we are on a "root" screen where back should exit the app
+                const isRootScreen = location.pathname === '/' || location.pathname === '/login';
+
+                if (isRootScreen) {
+                    CapacitorApp.exitApp();
+                } else {
+                    navigate(-1);
+                }
+            });
+        } catch (e) {
+            console.warn("Capacitor App plugin not available, back button handling skipped.");
+        }
+    };
+    
+    setupListener();
+
+    // 2. Handle Escape Key (Dev/Browser fallback)
     const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
-            if (location.pathname !== '/') {
+            if (location.pathname !== '/' && location.pathname !== '/login') {
                 navigate(-1);
             }
         }
     };
-    
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    return () => {
+        if (backButtonListener) backButtonListener.remove();
+        window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [location, navigate]);
 
   return null;

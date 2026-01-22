@@ -13,7 +13,8 @@ import {
     updateDoc, 
     onSnapshot,
     writeBatch,
-    arrayRemove
+    arrayRemove,
+    orderBy
 } from 'firebase/firestore';
 import { 
     signInWithEmailAndPassword, 
@@ -244,9 +245,6 @@ export const chatService = {
           const batch = writeBatch(db);
           chatIds.forEach(id => {
               const ref = doc(db, 'chats', id);
-              // Instead of hard deleting, remove the user from participants.
-              // If participants become empty, one could technically delete the doc, 
-              // but Firestore rules usually handle cleanup or we leave it.
               batch.update(ref, {
                   participants: arrayRemove(userId)
               });
@@ -262,18 +260,55 @@ export const chatService = {
   subscribeToMessages: (chatId: string, limitCount: number, callback: (msgs: Message[]) => void) => {
       const qLimited = query(
           collection(db, `chats/${chatId}/messages`),
-          limit(100) 
+          orderBy('timestamp', 'asc'), // Explicit order for consistency
+          limit(limitCount) // Wait, for real-time we want the *last* 100.
       );
-      return onSnapshot(qLimited, { includeMetadataChanges: true }, (snapshot) => {
+      // Correction: To get last 100, we usually need orderBy desc limit 100, then reverse.
+      // But for onSnapshot listener, simpler is to listen to the collection.
+      // Firestore onSnapshot with simple limit will return the *first* N documents based on order.
+      // So 'asc' (oldest first) limit 100 gives oldest 100. Not what we want.
+      // We want 'desc' (newest first) limit 100.
+      
+      const qRealtime = query(
+          collection(db, `chats/${chatId}/messages`),
+          orderBy('timestamp', 'desc'),
+          limit(limitCount)
+      );
+
+      return onSnapshot(qRealtime, { includeMetadataChanges: true }, (snapshot) => {
           const msgs = snapshot.docs.map(doc => ({
               message_id: doc.id,
               ...doc.data(),
               status: doc.metadata.hasPendingWrites ? 'pending' : doc.data().status
           } as Message));
           
-          msgs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          // Reverse back to chronological order (Old -> New) for the UI
+          msgs.reverse();
           callback(msgs);
       });
+  },
+
+  fetchHistory: async (chatId: string, beforeTimestamp: string): Promise<ApiResponse<Message[]>> => {
+      try {
+          const q = query(
+              collection(db, `chats/${chatId}/messages`),
+              where('timestamp', '<', beforeTimestamp),
+              orderBy('timestamp', 'desc'),
+              limit(50)
+          );
+          
+          const snapshot = await getDocs(q);
+          const msgs = snapshot.docs.map(doc => ({
+              message_id: doc.id,
+              ...doc.data(),
+              status: 'read' // History usually considered read/synced
+          } as Message));
+          
+          // Return chronological (Old -> New)
+          return success(msgs.reverse());
+      } catch (e: any) {
+          return fail(e.message);
+      }
   },
 
   // Client-side compression to Base64 to avoid Firebase Storage (Free Solution)
@@ -289,8 +324,6 @@ export const chatService = {
                   let width = img.width;
                   let height = img.height;
                   
-                  // Constraint: Firestore documents have a 1MB size limit.
-                  // We resize images to max 800px to ensure the Base64 string fits easily.
                   const MAX_WIDTH = 800;
                   const MAX_HEIGHT = 800;
 
@@ -311,8 +344,6 @@ export const chatService = {
                   const ctx = canvas.getContext('2d');
                   ctx?.drawImage(img, 0, 0, width, height);
                   
-                  // Compress to JPEG with 0.5 quality
-                  // This typically yields a string size of ~50-100KB
                   const dataUrl = canvas.toDataURL('image/jpeg', 0.5); 
                   resolve(dataUrl);
               };
@@ -334,7 +365,7 @@ export const chatService = {
       const msgData: any = {
           chat_id: chatId,
           sender_id: senderId,
-          message: content, // For type='image', this is the Base64 string
+          message: content, 
           type: type,
           timestamp: timestamp,
           status: 'sent'
@@ -346,7 +377,6 @@ export const chatService = {
 
       const msgRef = await addDoc(collection(db, `chats/${chatId}/messages`), msgData);
       
-      // Update Chat Metadata (last_message)
       updateDoc(doc(db, 'chats', chatId), {
           last_message: { ...msgData, message_id: msgRef.id },
           updated_at: timestamp
@@ -367,7 +397,6 @@ export const chatService = {
             batch.update(ref, { status: status });
         });
 
-        // Also update the chat last_message if relevant
         const chatRef = doc(db, 'chats', chatId);
         const chatSnap = await getDoc(chatRef);
         if (chatSnap.exists()) {
@@ -473,10 +502,8 @@ export const chatService = {
   
   markAs: async (chatId: string, messageId: string, status: 'delivered' | 'read') => {
       try {
-          // Update the message document
           await updateDoc(doc(db, `chats/${chatId}/messages`, messageId), { status });
           
-          // Check and update chat last_message if it matches
           const chatRef = doc(db, 'chats', chatId);
           const chatSnap = await getDoc(chatRef);
           if (chatSnap.exists()) {

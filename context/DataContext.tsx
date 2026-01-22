@@ -4,8 +4,10 @@ import { Chat, Message, AppSettings, User } from '../types';
 import { useAuth } from './AuthContext';
 import { chatService } from '../services/chatService';
 import { DEFAULT_SETTINGS } from '../constants';
-import { Unsubscribe } from 'firebase/firestore';
 import { deriveSharedKey, decryptMessage, encryptMessage } from '../utils/crypto';
+
+// Type alias for unsubscribe function
+type UnsubscribeFunc = () => void;
 
 interface DataContextType {
   chats: Chat[];
@@ -15,7 +17,8 @@ interface DataContextType {
   isOffline: boolean;
   contacts: User[];
   refreshChats: () => Promise<void>;
-  loadMessages: (chatId: string, beforeTimestamp?: string) => Promise<void>;
+  loadMessages: (chatId: string) => Promise<void>;
+  loadMoreMessages: (chatId: string) => Promise<void>;
   sendMessage: (chatId: string, text: string, replyTo?: Message['replyTo']) => Promise<void>;
   sendImage: (chatId: string, file: File) => Promise<void>;
   createChat: (participants: string[], groupName?: string) => Promise<string | null>;
@@ -37,12 +40,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [syncing, setSyncing] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-
-  const chatsUnsub = useRef<Unsubscribe | null>(null);
-  const contactsUnsub = useRef<Unsubscribe | null>(null);
-  const messageUnsubs = useRef<Record<string, Unsubscribe>>({});
   
-  // Cache stores: { [userId]: { key: CryptoKey, pubKeyStr: string } }
+  const [loadingHistory, setLoadingHistory] = useState<Record<string, boolean>>({});
+
+  // Use explicit function type instead of imported Unsubscribe interface to avoid call signature errors
+  const chatsUnsub = useRef<UnsubscribeFunc | null>(null);
+  const contactsUnsub = useRef<UnsubscribeFunc | null>(null);
+  const messageUnsubs = useRef<Record<string, UnsubscribeFunc>>({});
+  
   const sharedKeysCache = useRef<Record<string, { key: CryptoKey, pubKeyStr: string }>>({});
 
   useEffect(() => {
@@ -56,7 +61,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // --- Real-time Sync (Chats + Users) ---
   useEffect(() => {
     if (!user) {
         setChats([]);
@@ -68,35 +72,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setSyncing(true);
     
-    // 1. Subscribe to Chats
+    // Explicitly cast the return value to UnsubscribeFunc (function) if necessary, 
+    // though the chatService returns a function.
     chatsUnsub.current = chatService.subscribeToChats(user.user_id, (newChats) => {
         setChats(newChats);
         setSyncing(false);
 
-        // --- Automatic Delivery Receipt Logic ---
-        // Iterate through chats. If there's an incoming message that is just 'sent' (not delivered),
-        // we mark it as delivered because the app has successfully fetched the chat list.
         newChats.forEach(chat => {
             if (chat.last_message && 
                 chat.last_message.sender_id !== user.user_id && 
                 chat.last_message.status === 'sent') {
-                 // Call the service to mark all pending messages in this chat as delivered
                  chatService.markChatDelivered(chat.chat_id, user.user_id);
             }
         });
-    });
+    }) as UnsubscribeFunc;
 
-    // 2. Subscribe to Users (Real-time Presence)
     contactsUnsub.current = chatService.subscribeToUsers(user.user_id, (users) => {
         const now = new Date().getTime();
         const enhancedContacts = users.map(c => {
             const lastSeenTime = new Date(c.last_seen).getTime();
-            // If last_seen is within 2 minutes, consider online
             const isOnline = (now - lastSeenTime) < 2 * 60 * 1000; 
             return { ...c, status: isOnline ? 'online' : 'offline' };
         });
         
-        // Sort: Online first, then alphabetical
         enhancedContacts.sort((a, b) => {
             if (a.status === 'online' && b.status !== 'online') return -1;
             if (a.status !== 'online' && b.status === 'online') return 1;
@@ -104,9 +102,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         
         setContacts(enhancedContacts);
-    });
+    }) as UnsubscribeFunc;
 
-    // 3. Local Status Decay (Check every 15s to switch people offline if timeout)
     const decayTimer = setInterval(() => {
         setContacts(prev => {
              const now = new Date().getTime();
@@ -136,24 +133,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [user]);
 
-  // --- Crypto Helpers ---
   const getSharedKey = async (otherUserId: string): Promise<CryptoKey | null> => {
       const myPrivKeyStr = localStorage.getItem(`chatlix_priv_${user?.user_id}`);
-      // Find user from contacts list (which is kept updated via subscription)
       const otherUser = contacts.find(c => c.user_id === otherUserId);
       
       if (!myPrivKeyStr || !otherUser?.publicKey) return null;
 
-      // Check cache validity
       const cached = sharedKeysCache.current[otherUserId];
       if (cached && cached.pubKeyStr === otherUser.publicKey) {
           return cached.key;
       }
 
       try {
-          // Derive new key
           const key = await deriveSharedKey(myPrivKeyStr, otherUser.publicKey);
-          // Update cache
           sharedKeysCache.current[otherUserId] = { key, pubKeyStr: otherUser.publicKey };
           return key;
       } catch (e) {
@@ -166,23 +158,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const chat = chats.find(c => c.chat_id === chatId);
       if (chat && chat.type === 'group') return content;
       
-      // Determine whose key we need to establish the shared secret.
-      // E2EE logic: Shared Secret = ECDH(MyPriv, OtherPub) == ECDH(OtherPriv, MyPub)
-      
       const otherId = chat?.participants.find(p => p !== user?.user_id) || senderId;
       
       if (otherId === user?.user_id) { 
-         // I am the sender. To decrypt my own message, I need the Shared Secret I used to encrypt it.
-         // That secret was derived from MyPriv + ReceiverPub.
-         // I need to find who the receiver was.
          const realOtherId = chat?.participants.find(p => p !== user?.user_id);
-         if (!realOtherId) return content; // Self-chat or error
+         if (!realOtherId) return content;
          
          const key = await getSharedKey(realOtherId);
          if(key) return await decryptMessage(content, key);
       } else {
-         // I am the receiver. Sender is `otherId`.
-         // I derive secret from MyPriv + SenderPub.
          const key = await getSharedKey(otherId);
          if(key) return await decryptMessage(content, key);
       }
@@ -190,7 +174,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loadContacts = useCallback(async () => {
-    // Handled by real-time subscription
   }, []);
 
   const createChat = async (participants: string[], groupName?: string): Promise<string | null> => {
@@ -200,13 +183,72 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return response.success && response.data ? response.data.chat_id : null;
   };
 
-  const loadMessages = useCallback(async (chatId: string, beforeTimestamp?: string) => {
+  const loadMessages = useCallback(async (chatId: string) => {
     if (messageUnsubs.current[chatId]) return;
 
-    messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 100, (msgs) => {
-        setMessages(prev => ({ ...prev, [chatId]: msgs }));
-    });
+    // Listen to the latest 50 messages in real-time
+    messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 50, (incomingMsgs) => {
+        setMessages(prev => {
+            const currentMsgs = prev[chatId] || [];
+            
+            // Merge logic: Create a map to deduplicate by ID
+            // We prioritize the incoming (real-time/updated) data
+            const msgMap = new Map();
+            
+            // Populate with existing messages first
+            currentMsgs.forEach(m => msgMap.set(m.message_id, m));
+            
+            // Overwrite/Add with new messages
+            incomingMsgs.forEach(m => msgMap.set(m.message_id, m));
+            
+            // Convert back to array and sort chronologically
+            const merged = Array.from(msgMap.values()).sort((a: Message, b: Message) => 
+                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            );
+
+            return { ...prev, [chatId]: merged };
+        });
+    }) as UnsubscribeFunc;
   }, [user]);
+
+  const loadMoreMessages = async (chatId: string) => {
+      if (loadingHistory[chatId]) return;
+      
+      const currentMsgs = messages[chatId];
+      if (!currentMsgs || currentMsgs.length === 0) return;
+
+      const oldestMsg = currentMsgs[0];
+      
+      setLoadingHistory(prev => ({ ...prev, [chatId]: true }));
+      
+      try {
+          const res = await chatService.fetchHistory(chatId, oldestMsg.timestamp);
+          if (res.success && res.data && res.data.length > 0) {
+              const historyMsgs = res.data;
+              setMessages(prev => {
+                  const current = prev[chatId] || [];
+                  // Prepend history. Since history is older, we put it first.
+                  // But to be safe against overlap, we use the Map method again.
+                  const msgMap = new Map();
+                  
+                  // Add history first
+                  historyMsgs.forEach(m => msgMap.set(m.message_id, m));
+                  // Add/Overwrite with current (which contains latest status updates)
+                  current.forEach(m => msgMap.set(m.message_id, m));
+                  
+                  const merged = Array.from(msgMap.values()).sort((a: Message, b: Message) => 
+                    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                  );
+
+                  return { ...prev, [chatId]: merged };
+              });
+          }
+      } catch (e) {
+          console.error("Failed to load history", e);
+      } finally {
+          setLoadingHistory(prev => ({ ...prev, [chatId]: false }));
+      }
+  };
 
   const sendMessage = async (chatId: string, text: string, replyTo?: Message['replyTo']) => {
     if (!user || !text.trim()) return;
@@ -259,7 +301,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <DataContext.Provider value={{ 
         chats, messages, settings, syncing, isOffline, contacts, 
-        refreshChats, loadMessages, sendMessage, sendImage, retryFailedMessages, 
+        refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, retryFailedMessages, 
         createChat, loadContacts, markChatAsRead, decryptContent,
         deleteChats, deleteMessages
     }}>

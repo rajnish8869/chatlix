@@ -21,10 +21,14 @@ const MessageContent = ({ msg, decryptFn }: { msg: Message, decryptFn: any }) =>
     return <p className="text-[15px] leading-[1.5] break-words whitespace-pre-wrap">{text}</p>;
 };
 
-const SwipeableMessage = ({ 
+interface SwipeableMessageProps {
+    children: React.ReactNode;
+    onReply: () => void;
+    isMe: boolean;
+}
+
+const SwipeableMessage: React.FC<SwipeableMessageProps> = ({ 
     children, onReply, isMe 
-}: { 
-    children: React.ReactNode, onReply: () => void, isMe: boolean 
 }) => {
     const [translateX, setTranslateX] = useState(0);
     const startX = useRef<number | null>(null);
@@ -184,7 +188,7 @@ const ChatDetail: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { messages, loadMessages, sendMessage, sendImage, chats, markChatAsRead, contacts, loadContacts, decryptContent, deleteMessages } = useData();
+  const { messages, loadMessages, loadMoreMessages, sendMessage, sendImage, chats, markChatAsRead, contacts, loadContacts, decryptContent, deleteMessages } = useData();
   
   const [inputText, setInputText] = useState('');
   const [viewportHeight, setViewportHeight] = useState(window.visualViewport?.height || window.innerHeight);
@@ -398,6 +402,9 @@ const ChatDetail: React.FC = () => {
           data={chatMessages}
           initialTopMostItemIndex={Math.max(0, chatMessages.length - 1)}
           alignToBottom
+          startReached={() => {
+              if (chatId) loadMoreMessages(chatId);
+          }}
           overscan={500}
           atBottomStateChange={(atBottom) => setShowScrollFab(!atBottom)}
           followOutput={(isAtBottom) => {
