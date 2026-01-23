@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Button, Input } from "../components/AndroidUI";
@@ -35,41 +36,55 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background relative overflow-hidden">
-      <div className="absolute top-[-30%] left-[-10%] w-[80%] h-[60%] bg-primary/15 rounded-full blur-3xl" />
-      <div className="absolute bottom-[-20%] right-[-15%] w-[70%] h-[70%] bg-purple-600/10 rounded-full blur-3xl animate-pulse" />
+    <div className="h-screen w-full flex flex-col bg-background relative overflow-hidden overscroll-none touch-none">
+      {/* Ambient Background Effects */}
+      <div className="absolute top-[-30%] left-[-10%] w-[80%] h-[60%] bg-primary/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-15%] w-[70%] h-[70%] bg-purple-600/10 rounded-full blur-3xl animate-pulse pointer-events-none" />
 
-      <div className="flex-1 flex flex-col items-center justify-center p-6 z-10">
-        <div className="mb-12 animate-fade-in">
-          <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-primary via-purple-600 to-primary/80 shadow-2xl shadow-primary/40 mb-6 flex items-center justify-center transform hover:scale-110 transition-transform duration-500 hover:shadow-primary/60">
+      {/* Main Content Area: Logo & Branding - Takes remaining space */}
+      <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 w-full">
+        <div className="animate-fade-in flex flex-col items-center justify-center">
+          {/* Updated Logo: Chat Bubble Style */}
+          <div className="w-28 h-28 rounded-[32px] bg-gradient-to-br from-primary via-indigo-500 to-purple-600 shadow-2xl shadow-primary/30 mb-6 flex items-center justify-center transform hover:scale-105 transition-transform duration-500 relative overflow-hidden group">
+            <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-20 transition-opacity" />
             <svg
-              className="w-16 h-16 text-white"
+              className="w-14 h-14 text-white drop-shadow-md"
               viewBox="0 0 24 24"
               fill="currentColor"
             >
-              <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" />
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+              <path
+                d="M8 10h8v2H8zm0-3h8v2H8z"
+                className="text-primary/20 mix-blend-multiply" 
+                fill="black"
+                fillOpacity="0.2"
+              />
             </svg>
           </div>
-          <h1 className="text-5xl font-black text-text-main tracking-tighter text-center mb-2">
+          
+          <h1 className="text-4xl font-black text-text-main tracking-tighter text-center mb-1 drop-shadow-sm">
             Chatlix
           </h1>
-          <p className="text-text-sub text-center font-semibold opacity-80 text-base">
+          <p className="text-text-sub text-center font-bold opacity-70 text-sm tracking-wide">
             Seamless & Secure Messaging
           </p>
         </div>
       </div>
 
-      <div className="bg-surface/60 backdrop-blur-2xl border-t border-white/10 rounded-t-[48px] p-8 shadow-2xl z-20 animate-slide-up">
-        <div className="flex p-1.5 bg-surface-highlight/50 rounded-2xl mb-8 relative">
+      {/* Bottom Form Sheet - Anchored to bottom */}
+      <div className="w-full bg-surface/60 backdrop-blur-2xl border-t border-white/10 rounded-t-[40px] px-8 pt-8 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.5)] z-20 animate-slide-up flex flex-col items-center">
+        
+        {/* Toggle Switch */}
+        <div className="flex p-1 bg-surface-highlight/50 rounded-xl mb-6 relative w-full max-w-xs mx-auto">
           <div
-            className={`absolute top-[6px] bottom-[6px] w-[calc(50%-6px)] bg-white/10 shadow-lg rounded-xl transition-all duration-300 ease-out ${isLogin ? "left-[6px]" : "left-[calc(50%+6px)]"}`}
+            className={`absolute top-[4px] bottom-[4px] w-[calc(50%-4px)] bg-white/10 shadow-md rounded-lg transition-all duration-300 ease-out ${isLogin ? "left-[4px]" : "left-[calc(50%+4px)]"}`}
           />
           <button
             onClick={() => {
               setIsLogin(true);
               setError("");
             }}
-            className={`flex-1 py-2.5 text-sm font-bold z-10 transition-colors rounded-lg ${isLogin ? "text-primary" : "text-text-sub"}`}
+            className={`flex-1 py-2.5 text-sm font-bold z-10 transition-colors rounded-lg text-center ${isLogin ? "text-primary" : "text-text-sub"}`}
           >
             Log In
           </button>
@@ -78,19 +93,21 @@ const Login: React.FC = () => {
               setIsLogin(false);
               setError("");
             }}
-            className={`flex-1 py-2.5 text-sm font-bold z-10 transition-colors rounded-lg ${!isLogin ? "text-primary" : "text-text-sub"}`}
+            className={`flex-1 py-2.5 text-sm font-bold z-10 transition-colors rounded-lg text-center ${!isLogin ? "text-primary" : "text-text-sub"}`}
           >
             Sign Up
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        {/* Form Inputs */}
+        <form onSubmit={handleSubmit} className="space-y-3.5 w-full max-w-xs mx-auto">
           {!isLogin && (
             <div className="animate-fade-in">
               <Input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Full Name"
+                className="text-center"
               />
             </div>
           )}
@@ -101,6 +118,7 @@ const Login: React.FC = () => {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email Address"
             autoComplete="email"
+            className="text-center"
           />
 
           <Input
@@ -109,10 +127,11 @@ const Login: React.FC = () => {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             autoComplete={isLogin ? "current-password" : "new-password"}
+            className="text-center"
           />
 
           {error && (
-            <div className="text-danger text-sm text-center font-semibold bg-danger/10 p-3.5 rounded-2xl border border-danger/20 animate-fade-in">
+            <div className="text-danger text-xs text-center font-bold bg-danger/10 p-3 rounded-xl border border-danger/20 animate-fade-in">
               {error}
             </div>
           )}
@@ -120,7 +139,7 @@ const Login: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-4 rounded-2xl font-bold tracking-wide transition-all tap-active disabled:opacity-50 disabled:pointer-events-none bg-gradient-to-r from-primary to-primary/90 text-primary-fg shadow-lg shadow-primary/30 hover:shadow-primary/40 text-base mt-6"
+            className="w-full py-3.5 rounded-2xl font-bold tracking-wide transition-all tap-active disabled:opacity-50 disabled:pointer-events-none bg-gradient-to-r from-primary to-primary/90 text-primary-fg shadow-lg shadow-primary/30 hover:shadow-primary/40 text-sm mt-4 active:scale-[0.98]"
           >
             {loading ? (
               <span className="opacity-80">Please wait...</span>
@@ -132,8 +151,8 @@ const Login: React.FC = () => {
           </button>
         </form>
 
-        <p className="text-center text-xs text-text-sub mt-8 opacity-50 pb-2 font-mono">
-          v3.2 • Encrypted • Secure
+        <p className="text-center text-[10px] text-text-sub mt-6 opacity-40 font-mono tracking-widest">
+          v3.2 • ENCRYPTED
         </p>
       </div>
     </div>
