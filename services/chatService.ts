@@ -14,14 +14,23 @@ import {
     onSnapshot,
     writeBatch,
     arrayRemove,
-    orderBy
+    orderBy,
+    deleteField
 } from 'firebase/firestore';
 import { 
     signInWithEmailAndPassword, 
     createUserWithEmailAndPassword, 
     updateProfile 
 } from 'firebase/auth';
-import { auth, db } from './firebase';
+import { 
+    ref, 
+    set, 
+    onValue, 
+    onDisconnect, 
+    remove, 
+    serverTimestamp 
+} from 'firebase/database';
+import { auth, db, rtdb } from './firebase';
 
 // Helper to standardise responses
 const success = <T>(data?: T): ApiResponse<T> => ({ success: true, data });
@@ -193,7 +202,12 @@ export const chatService = {
 
   // --- CHATS ---
 
-  createChat: async (userId: string, participants: string[], groupName?: string): Promise<ApiResponse<Chat>> => {
+  createChat: async (
+      userId: string, 
+      participants: string[], 
+      groupName?: string, 
+      encryptedKeys?: Record<string, string>
+    ): Promise<ApiResponse<Chat>> => {
     try {
       // If 1-on-1 and no group name forced, check for existing
       if (participants.length === 2 && !groupName) {
@@ -211,13 +225,19 @@ export const chatService = {
 
       const isGroup = participants.length > 2 || !!groupName;
 
-      const newChatData = {
+      const newChatData: any = {
           type: isGroup ? 'group' : 'private',
           participants,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           name: groupName || (isGroup ? 'Group Chat' : '')
       };
+
+      // Add E2EE payload for groups
+      if (isGroup && encryptedKeys) {
+          newChatData.key_issuer_id = userId;
+          newChatData.encrypted_keys = encryptedKeys;
+      }
 
       const docRef = await addDoc(collection(db, 'chats'), newChatData);
       return success({ ...newChatData, chat_id: docRef.id } as Chat);
@@ -258,17 +278,6 @@ export const chatService = {
   // --- MESSAGES ---
 
   subscribeToMessages: (chatId: string, limitCount: number, callback: (msgs: Message[]) => void) => {
-      const qLimited = query(
-          collection(db, `chats/${chatId}/messages`),
-          orderBy('timestamp', 'asc'), // Explicit order for consistency
-          limit(limitCount) // Wait, for real-time we want the *last* 100.
-      );
-      // Correction: To get last 100, we usually need orderBy desc limit 100, then reverse.
-      // But for onSnapshot listener, simpler is to listen to the collection.
-      // Firestore onSnapshot with simple limit will return the *first* N documents based on order.
-      // So 'asc' (oldest first) limit 100 gives oldest 100. Not what we want.
-      // We want 'desc' (newest first) limit 100.
-      
       const qRealtime = query(
           collection(db, `chats/${chatId}/messages`),
           orderBy('timestamp', 'desc'),
@@ -282,7 +291,6 @@ export const chatService = {
               status: doc.metadata.hasPendingWrites ? 'pending' : doc.data().status
           } as Message));
           
-          // Reverse back to chronological order (Old -> New) for the UI
           msgs.reverse();
           callback(msgs);
       });
@@ -301,17 +309,15 @@ export const chatService = {
           const msgs = snapshot.docs.map(doc => ({
               message_id: doc.id,
               ...doc.data(),
-              status: 'read' // History usually considered read/synced
+              status: 'read'
           } as Message));
           
-          // Return chronological (Old -> New)
           return success(msgs.reverse());
       } catch (e: any) {
           return fail(e.message);
       }
   },
 
-  // Client-side compression to Base64 to avoid Firebase Storage (Free Solution)
   uploadImage: async (chatId: string, file: File): Promise<string> => {
       return new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -409,6 +415,32 @@ export const chatService = {
         await batch.commit();
       } catch (e) {
           console.error("Failed to update message status", e);
+      }
+  },
+
+  toggleReaction: async (chatId: string, messageId: string, userId: string, reaction: string) => {
+      try {
+        const msgRef = doc(db, `chats/${chatId}/messages`, messageId);
+        const msgSnap = await getDoc(msgRef);
+        
+        if (msgSnap.exists()) {
+            const currentReactions = msgSnap.data().reactions || {};
+            const existingReaction = currentReactions[userId];
+
+            if (existingReaction === reaction) {
+                // Remove if same
+                await updateDoc(msgRef, {
+                    [`reactions.${userId}`]: deleteField()
+                });
+            } else {
+                // Add or update
+                await updateDoc(msgRef, {
+                    [`reactions.${userId}`]: reaction
+                });
+            }
+        }
+      } catch (e) {
+          console.error("Failed to toggle reaction", e);
       }
   },
 
@@ -515,6 +547,35 @@ export const chatService = {
       } catch (e) {
         console.error("MarkAs failed", e);
       }
+  },
+
+  // --- TYPING STATUS (RTDB) ---
+  
+  setTypingStatus: async (chatId: string, userId: string, isTyping: boolean) => {
+      try {
+        const typingRef = ref(rtdb, `typing/${chatId}/${userId}`);
+        if (isTyping) {
+            // Set timestamp and remove on disconnect
+            await set(typingRef, serverTimestamp());
+            onDisconnect(typingRef).remove();
+        } else {
+            await remove(typingRef);
+        }
+      } catch (e) {
+          console.error("Typing status error", e);
+      }
+  },
+
+  subscribeToChatTyping: (chatId: string, callback: (userIds: string[]) => void) => {
+      const chatTypingRef = ref(rtdb, `typing/${chatId}`);
+      return onValue(chatTypingRef, (snapshot) => {
+          if (snapshot.exists()) {
+              const data = snapshot.val();
+              callback(Object.keys(data));
+          } else {
+              callback([]);
+          }
+      });
   },
 
   fetchSettings: async (): Promise<ApiResponse<AppSettings>> => {

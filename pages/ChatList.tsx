@@ -37,7 +37,7 @@ const ChatItemWrapper: React.FC<ChatItemWrapperProps> = ({ children, chatId, onL
 };
 
 const ChatList: React.FC = () => {
-  const { chats, refreshChats, messages, contacts, loadContacts, decryptContent, deleteChats } = useData();
+  const { chats, refreshChats, messages, contacts, loadContacts, decryptContent, deleteChats, typingStatus } = useData();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -117,6 +117,13 @@ const ChatList: React.FC = () => {
       await deleteChats(Array.from(selectedChatIds));
       setSelectedChatIds(new Set());
   };
+  
+  const isTyping = (chatId: string) => {
+      const active = typingStatus[chatId];
+      if (!active) return false;
+      // Filter out me
+      return active.some(id => id !== user?.user_id);
+  };
 
   const filteredChats = chats.filter(chat => getChatName(chat).toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -183,6 +190,7 @@ const ChatList: React.FC = () => {
                 const unread = user && lastMsg && lastMsg.sender_id !== user.user_id && lastMsg.status !== 'read';
                 const chatName = getChatName(chat);
                 const isSelected = selectedChatIds.has(chat.chat_id);
+                const typing = isTyping(chat.chat_id);
                 
                 let previewText = lastMsg?.message || '';
                 if (lastMsg?.type === 'encrypted') {
@@ -223,17 +231,23 @@ const ChatList: React.FC = () => {
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
-                                        {lastMsg?.sender_id === user?.user_id && (
-                                            <span className="flex-shrink-0 scale-75">
-                                                {lastMsg?.status === 'sent' && <Icons.Check className="text-text-sub" />}
-                                                {lastMsg?.status === 'delivered' && <Icons.DoubleCheck className="text-text-sub" />}
-                                                {lastMsg?.status === 'read' && <Icons.DoubleCheck className="text-primary" />}
-                                            </span>
+                                        {typing ? (
+                                            <p className="text-[14px] truncate leading-relaxed text-primary font-bold animate-pulse">Typing...</p>
+                                        ) : (
+                                            <>
+                                                {lastMsg?.sender_id === user?.user_id && (
+                                                    <span className="flex-shrink-0 scale-75">
+                                                        {lastMsg?.status === 'sent' && <Icons.Check className="text-text-sub" />}
+                                                        {lastMsg?.status === 'delivered' && <Icons.DoubleCheck className="text-text-sub" />}
+                                                        {lastMsg?.status === 'read' && <Icons.DoubleCheck className="text-primary" />}
+                                                    </span>
+                                                )}
+                                                <p className={`text-[14px] truncate leading-relaxed ${unread ? 'text-text-main font-semibold' : 'text-text-sub opacity-80'} ${lastMsg?.type === 'encrypted' ? 'italic' : ''}`}>
+                                                {lastMsg?.type === 'encrypted' && <span className="mr-1 inline-block relative top-[1px]"><Icons.Lock /></span>}
+                                                {previewText}
+                                                </p>
+                                            </>
                                         )}
-                                        <p className={`text-[14px] truncate leading-relaxed ${unread ? 'text-text-main font-semibold' : 'text-text-sub opacity-80'} ${lastMsg?.type === 'encrypted' ? 'italic' : ''}`}>
-                                        {lastMsg?.type === 'encrypted' && <span className="mr-1 inline-block relative top-[1px]"><Icons.Lock /></span>}
-                                        {previewText}
-                                        </p>
                                     </div>
                                 </div>
                                 {unread && <div className="w-3 h-3 bg-primary rounded-full shadow-glow" />}

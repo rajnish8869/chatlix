@@ -4,7 +4,17 @@ import { Chat, Message, AppSettings, User } from '../types';
 import { useAuth } from './AuthContext';
 import { chatService } from '../services/chatService';
 import { DEFAULT_SETTINGS } from '../constants';
-import { deriveSharedKey, decryptMessage, encryptMessage } from '../utils/crypto';
+import { 
+    deriveSharedKey, 
+    decryptMessage, 
+    encryptMessage, 
+    generateSymmetricKey, 
+    exportKeyToString, 
+    importKeyFromString 
+} from '../utils/crypto';
+import { SecureStorage } from '../utils/storage';
+import { doc, getDoc } from 'firebase/firestore'; 
+import { db } from '../services/firebase'; // Direct db access for user key fetching if needed
 
 // Type alias for unsubscribe function
 type UnsubscribeFunc = () => void;
@@ -16,11 +26,14 @@ interface DataContextType {
   syncing: boolean;
   isOffline: boolean;
   contacts: User[];
+  typingStatus: Record<string, string[]>; // chatId -> userIds[]
   refreshChats: () => Promise<void>;
   loadMessages: (chatId: string) => Promise<void>;
   loadMoreMessages: (chatId: string) => Promise<void>;
   sendMessage: (chatId: string, text: string, replyTo?: Message['replyTo']) => Promise<void>;
   sendImage: (chatId: string, file: File) => Promise<void>;
+  toggleReaction: (chatId: string, messageId: string, reaction: string) => Promise<void>;
+  setTyping: (chatId: string, isTyping: boolean) => Promise<void>;
   createChat: (participants: string[], groupName?: string) => Promise<string | null>;
   loadContacts: () => Promise<void>;
   retryFailedMessages: () => void;
@@ -41,14 +54,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [syncing, setSyncing] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   
+  // Typing Status State
+  const [typingStatus, setTypingStatusState] = useState<Record<string, string[]>>({});
+  
   const [loadingHistory, setLoadingHistory] = useState<Record<string, boolean>>({});
 
-  // Use explicit function type instead of imported Unsubscribe interface to avoid call signature errors
   const chatsUnsub = useRef<UnsubscribeFunc | null>(null);
   const contactsUnsub = useRef<UnsubscribeFunc | null>(null);
   const messageUnsubs = useRef<Record<string, UnsubscribeFunc>>({});
+  const typingUnsubs = useRef<Record<string, UnsubscribeFunc>>({});
   
   const sharedKeysCache = useRef<Record<string, { key: CryptoKey, pubKeyStr: string }>>({});
+  const groupKeysCache = useRef<Record<string, CryptoKey>>({});
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -61,19 +78,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  // Sync Typing Listeners with Chats
+  useEffect(() => {
+      // For every chat in the list, subscribe to typing status
+      chats.forEach(chat => {
+          if (!typingUnsubs.current[chat.chat_id]) {
+              typingUnsubs.current[chat.chat_id] = chatService.subscribeToChatTyping(chat.chat_id, (userIds) => {
+                  setTypingStatusState(prev => ({
+                      ...prev,
+                      [chat.chat_id]: userIds
+                  }));
+              });
+          }
+      });
+
+      // Cleanup listeners for chats that are removed? (Optional optimisation)
+  }, [chats]);
+
   useEffect(() => {
     if (!user) {
         setChats([]);
         setContacts([]);
+        setTypingStatusState({});
+        groupKeysCache.current = {};
         if (chatsUnsub.current) chatsUnsub.current();
         if (contactsUnsub.current) contactsUnsub.current();
+        // Cleanup typing subs
+        Object.values(typingUnsubs.current).forEach((unsub: any) => {
+            if (typeof unsub === 'function') unsub();
+        });
+        typingUnsubs.current = {};
         return;
     }
 
     setSyncing(true);
     
-    // Explicitly cast the return value to UnsubscribeFunc (function) if necessary, 
-    // though the chatService returns a function.
     chatsUnsub.current = chatService.subscribeToChats(user.user_id, (newChats) => {
         setChats(newChats);
         setSyncing(false);
@@ -121,21 +160,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
     }, 15000);
 
-    chatService.fetchSettings().then(res => {
-        if(res.success && res.data) setSettings(res.data);
-    });
+    if (chatService.fetchSettings) {
+        chatService.fetchSettings().then(res => {
+            if(res.success && res.data) setSettings(res.data);
+        });
+    }
 
     return () => {
         if (chatsUnsub.current) chatsUnsub.current();
         if (contactsUnsub.current) contactsUnsub.current();
         clearInterval(decayTimer);
-        Object.values(messageUnsubs.current).forEach(unsub => unsub());
+        Object.values(messageUnsubs.current).forEach(unsub => {
+            if (typeof unsub === 'function') unsub();
+        });
+        Object.values(typingUnsubs.current).forEach((unsub: any) => {
+             if (typeof unsub === 'function') unsub();
+        });
     };
   }, [user]);
 
+  // Retrieve 1-on-1 Shared Secret
   const getSharedKey = async (otherUserId: string): Promise<CryptoKey | null> => {
-      const myPrivKeyStr = localStorage.getItem(`chatlix_priv_${user?.user_id}`);
-      const otherUser = contacts.find(c => c.user_id === otherUserId);
+      const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user?.user_id}`);
+      let otherUser = contacts.find(c => c.user_id === otherUserId);
+
+      // Fallback: If contact not in list (e.g. fresh group load), try fetch from Firebase?
+      // For now, rely on loaded contacts. If not found, encryption fails.
       
       if (!myPrivKeyStr || !otherUser?.publicKey) return null;
 
@@ -156,15 +206,44 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const decryptContent = async (chatId: string, content: string, senderId: string): Promise<string> => {
       const chat = chats.find(c => c.chat_id === chatId);
-      if (chat && chat.type === 'group') return content;
+      if (!chat) return content;
+
+      // --- GROUP CHAT DECRYPTION ---
+      if (chat.type === 'group') {
+          // If no E2EE setup for this group (legacy), return raw
+          if (!chat.encrypted_keys || !chat.key_issuer_id) return content;
+
+          if (groupKeysCache.current[chatId]) {
+              return await decryptMessage(content, groupKeysCache.current[chatId]);
+          }
+
+          const myEncryptedKey = chat.encrypted_keys[user?.user_id || ''];
+          if (!myEncryptedKey) return "🔒 Access Denied (No Key)";
+
+          try {
+              // The key was encrypted by the Issuer for Me.
+              // So I decrypt using Shared(Me, Issuer).
+              // Note: If I am the Issuer, Shared(Me, Me) is valid.
+              const sharedKey = await getSharedKey(chat.key_issuer_id);
+              if (!sharedKey) return "🔒 Key Failure";
+
+              const groupKeyStr = await decryptMessage(myEncryptedKey, sharedKey);
+              if (groupKeyStr.startsWith("🔒")) return "🔒 Decryption Error";
+
+              const groupKey = await importKeyFromString(groupKeyStr);
+              groupKeysCache.current[chatId] = groupKey;
+              
+              return await decryptMessage(content, groupKey);
+          } catch (e) {
+              return "🔒 Decryption Failed";
+          }
+      } 
       
-      const otherId = chat?.participants.find(p => p !== user?.user_id) || senderId;
-      
+      // --- PRIVATE CHAT DECRYPTION ---
+      const otherId = chat.participants.find(p => p !== user?.user_id) || senderId;
       if (otherId === user?.user_id) { 
-         const realOtherId = chat?.participants.find(p => p !== user?.user_id);
-         if (!realOtherId) return content;
-         
-         const key = await getSharedKey(realOtherId);
+         // Chat with self
+         const key = await getSharedKey(user?.user_id || '');
          if(key) return await decryptMessage(content, key);
       } else {
          const key = await getSharedKey(otherId);
@@ -179,7 +258,52 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const createChat = async (participants: string[], groupName?: string): Promise<string | null> => {
     if (!user) return null;
     const allParticipants = Array.from(new Set([...participants, user.user_id]));
-    const response = await chatService.createChat(user.user_id, allParticipants, groupName);
+    const isGroup = allParticipants.length > 2 || !!groupName;
+
+    let encryptedKeysPayload: Record<string, string> | undefined = undefined;
+
+    if (isGroup) {
+        // 1. Generate Group Key
+        const groupKey = await generateSymmetricKey();
+        const groupKeyStr = await exportKeyToString(groupKey);
+
+        // 2. Encrypt Group Key for each participant
+        encryptedKeysPayload = {};
+        const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user.user_id}`);
+
+        if (!myPrivKeyStr) {
+            console.error("Cannot create encrypted group: Missing private key");
+            return null;
+        }
+
+        // We need public keys for all participants.
+        // `contacts` state might not have everyone if we just searched.
+        // For robustness, we should fetch fresh profiles for participants not in `contacts`.
+        // Simplification: Assume they are in contacts or we fetch them.
+        
+        for (const pId of allParticipants) {
+             let pUser = contacts.find(c => c.user_id === pId);
+             if (pId === user.user_id) pUser = user;
+             
+             if (!pUser && pId !== user.user_id) {
+                 // Fetch missing user public key
+                 const docRef = doc(db, 'users', pId);
+                 const snap = await getDoc(docRef);
+                 if (snap.exists()) pUser = snap.data() as User;
+             }
+
+             if (pUser?.publicKey) {
+                 // Derive shared secret
+                 const shared = await deriveSharedKey(myPrivKeyStr, pUser.publicKey);
+                 const encryptedKey = await encryptMessage(groupKeyStr, shared);
+                 encryptedKeysPayload[pId] = encryptedKey;
+             } else {
+                 console.warn(`Skipping encryption for ${pId}: No public key`);
+             }
+        }
+    }
+
+    const response = await chatService.createChat(user.user_id, allParticipants, groupName, encryptedKeysPayload);
     return response.success && response.data ? response.data.chat_id : null;
   };
 
@@ -257,12 +381,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let type: 'text' | 'encrypted' = 'text';
     
     const chat = chats.find(c => c.chat_id === chatId);
-    if (chat && chat.type === 'private') {
-        const otherId = chat.participants.find(p => p !== user.user_id);
-        if (otherId) {
-            const key = await getSharedKey(otherId);
-            if (key) {
-                content = await encryptMessage(text, key);
+    
+    if (chat) {
+        if (chat.type === 'private') {
+            const otherId = chat.participants.find(p => p !== user.user_id);
+            if (otherId) {
+                const key = await getSharedKey(otherId);
+                if (key) {
+                    content = await encryptMessage(text, key);
+                    type = 'encrypted';
+                }
+            }
+        } else if (chat.type === 'group' && chat.encrypted_keys) {
+            // Check cache for group key, or lazy load it (decrypt it)
+            // For simplicity, we assume we might need to load it if not cached.
+            if (!groupKeysCache.current[chatId]) {
+                 // Try decrypt just to populate cache
+                 await decryptContent(chatId, "WARMUP", user.user_id);
+            }
+            
+            const groupKey = groupKeysCache.current[chatId];
+            if (groupKey) {
+                content = await encryptMessage(text, groupKey);
                 type = 'encrypted';
             }
         }
@@ -279,6 +419,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (e) {
           console.error("Failed to send image", e);
       }
+  };
+  
+  const toggleReaction = async (chatId: string, messageId: string, reaction: string) => {
+      if (!user) return;
+      await chatService.toggleReaction(chatId, messageId, user.user_id, reaction);
+  };
+  
+  const setTyping = async (chatId: string, isTyping: boolean) => {
+      if (!user) return;
+      await chatService.setTypingStatus(chatId, user.user_id, isTyping);
   };
 
   const markChatAsRead = async (chatId: string) => {
@@ -300,9 +450,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <DataContext.Provider value={{ 
-        chats, messages, settings, syncing, isOffline, contacts, 
+        chats, messages, settings, syncing, isOffline, contacts, typingStatus,
         refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, retryFailedMessages, 
-        createChat, loadContacts, markChatAsRead, decryptContent,
+        createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
         deleteChats, deleteMessages
     }}>
       {children}

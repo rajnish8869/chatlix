@@ -6,6 +6,7 @@ import { auth, db } from '../services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { generateKeyPair } from '../utils/crypto';
+import { SecureStorage } from '../utils/storage';
 
 interface AuthContextType {
   user: User | null;
@@ -41,19 +42,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 console.error("Failed to fetch user profile", e);
             }
 
-            // 2. Handle Key Synchronization
-            // - Check Local Storage
-            // - Check Remote Storage
-            // - Generate if missing
+            // 2. Handle Key Synchronization & Secure Storage Migration
             
-            let privKey = localStorage.getItem(`chatlix_priv_${currentUser.uid}`);
+            // Check Secure Storage first
+            let privKey = await SecureStorage.get(`chatlix_priv_${currentUser.uid}`);
             let pubKey = remoteData?.publicKey;
+
+            // Migration: Check LocalStorage if SecureStorage is empty
+            if (!privKey) {
+                const legacyKey = localStorage.getItem(`chatlix_priv_${currentUser.uid}`);
+                if (legacyKey) {
+                    console.log("[Auth] Migrating key to SecureStorage");
+                    await SecureStorage.set(`chatlix_priv_${currentUser.uid}`, legacyKey);
+                    localStorage.removeItem(`chatlix_priv_${currentUser.uid}`);
+                    privKey = legacyKey;
+                }
+            }
 
             // Scenario: New Device / Cleared Storage -> Restore from Server
             if (!privKey && remoteData?.privateKey) {
                 console.log("[Auth] Restoring keys from server...");
                 privKey = remoteData.privateKey;
-                localStorage.setItem(`chatlix_priv_${currentUser.uid}`, privKey);
+                await SecureStorage.set(`chatlix_priv_${currentUser.uid}`, privKey);
             }
 
             // Scenario: First time setup or Total Loss -> Generate New
@@ -63,15 +73,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 privKey = keys.privateKey;
                 pubKey = keys.publicKey;
                 
-                localStorage.setItem(`chatlix_priv_${currentUser.uid}`, privKey);
+                await SecureStorage.set(`chatlix_priv_${currentUser.uid}`, privKey);
                 
                 // Upload both keys to server
                 await chatService.updateUserKeys(currentUser.uid, pubKey, privKey);
-            } else {
-                // We have a private key. Ensure public key is consistent on server.
-                // If the server doesn't have a public key, we upload the one we can (if we just generated it). 
-                // But if we just restored from local, we assume server logic is fine.
-                // If remoteData is missing completely (new user created via Login UI but doc not made yet? rare), we might need to update.
             }
 
             // 3. Set User State

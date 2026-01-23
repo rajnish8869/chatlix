@@ -1,5 +1,4 @@
 
-
 export interface User {
   user_id: string; // Matches Firebase Auth UID
   username: string;
@@ -19,7 +18,10 @@ export interface Chat {
   created_at: string;
   updated_at?: string; 
   last_message?: Message; 
-  name?: string; 
+  name?: string;
+  // E2EE for Groups
+  key_issuer_id?: string; // The user who generated the group key
+  encrypted_keys?: Record<string, string>; // Map of userID -> Encrypted Group Key (Base64)
 }
 
 export interface Message {
@@ -36,6 +38,7 @@ export interface Message {
       message: string; // Preview text
       type: 'text' | 'image' | 'encrypted';
   };
+  reactions?: Record<string, string>; // userId -> emoji
 }
 
 export interface AppSettings {

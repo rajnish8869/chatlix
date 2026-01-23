@@ -3,9 +3,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { TopBar, Icons, ScrollDownFab, ConfirmationModal, Avatar, ImageViewer } from '../components/AndroidUI';
+import { TopBar, Icons, ScrollDownFab, ConfirmationModal, Avatar, ImageViewer, BottomSheet } from '../components/AndroidUI';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { Message } from '../types';
+
+const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 
 const MessageContent = ({ msg, decryptFn }: { msg: Message, decryptFn: any }) => {
     const [text, setText] = useState(msg.type === 'encrypted' ? '🔓 Decrypting...' : msg.message);
@@ -99,6 +101,18 @@ const MessageItem = React.memo(({
     return colors[Math.abs(hash) % colors.length];
   };
 
+  // Aggregate reactions
+  const reactionCounts = React.useMemo(() => {
+      if (!msg.reactions) return null;
+      const counts: Record<string, number> = {};
+      Object.values(msg.reactions).forEach(r => {
+          counts[r] = (counts[r] || 0) + 1;
+      });
+      const entries = Object.entries(counts);
+      if (entries.length === 0) return null;
+      return entries;
+  }, [msg.reactions]);
+
   return (
     <SwipeableMessage onReply={() => onReply(msg)} isMe={isMe}>
         <div className={`px-4 animate-fade-in transition-colors ${isSelected ? 'bg-primary/10 -mx-4 px-8 py-2' : ''}`}>
@@ -128,6 +142,7 @@ const MessageItem = React.memo(({
                 } 
                 ${msg.status === 'failed' ? 'border-2 border-danger' : ''}
                 ${msg.type === 'image' ? 'p-1' : 'px-5 py-3'} 
+                ${reactionCounts ? 'mb-4' : ''}
             `}
             >
             {/* Reply Quote Block */}
@@ -177,6 +192,19 @@ const MessageItem = React.memo(({
                 )}
                 {msg.type === 'encrypted' && <span className="text-[8px] opacity-70"><Icons.Lock /></span>}
             </div>
+
+            {/* Reactions Display */}
+            {reactionCounts && (
+                <div className={`absolute -bottom-4 ${isMe ? 'right-0' : 'left-0'} flex items-center gap-1`}>
+                    {reactionCounts.map(([emoji, count]) => (
+                        <div key={emoji} className="bg-surface border border-white/5 shadow-sm rounded-full px-1.5 py-0.5 text-[10px] flex items-center gap-0.5 text-text-main">
+                            <span>{emoji}</span>
+                            {count > 1 && <span className="font-bold">{count}</span>}
+                        </div>
+                    ))}
+                </div>
+            )}
+            
             </div>
         </div>
         </div>
@@ -188,7 +216,7 @@ const ChatDetail: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { messages, loadMessages, loadMoreMessages, sendMessage, sendImage, chats, markChatAsRead, contacts, loadContacts, decryptContent, deleteMessages } = useData();
+  const { messages, loadMessages, loadMoreMessages, sendMessage, sendImage, chats, markChatAsRead, contacts, loadContacts, decryptContent, deleteMessages, toggleReaction, typingStatus, setTyping } = useData();
   
   const [inputText, setInputText] = useState('');
   const [viewportHeight, setViewportHeight] = useState(window.visualViewport?.height || window.innerHeight);
@@ -204,9 +232,15 @@ const ChatDetail: React.FC = () => {
   const isSelectionMode = selectedMsgIds.size > 0;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  // Reaction / Options Sheet State
+  const [activeMessage, setActiveMessage] = useState<Message | null>(null);
+
   // Reply State
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [replyPreview, setReplyPreview] = useState<string>('');
+  
+  // Typing Throttling
+  const typingTimeoutRef = useRef<any>(null);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const chatMessages = chatId ? messages[chatId] || [] : [];
@@ -264,6 +298,20 @@ const ChatDetail: React.FC = () => {
     return () => { isMounted = false; };
   }, [replyingTo, chatId, decryptContent]);
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const val = e.target.value;
+      setInputText(val);
+
+      if (chatId) {
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          setTyping(chatId, true);
+          
+          typingTimeoutRef.current = setTimeout(() => {
+              setTyping(chatId, false);
+          }, 3000); // Stop typing after 3s of inactivity
+      }
+  };
+
   const handleSend = async () => {
     if (!inputText.trim() || !chatId) return;
     const text = inputText;
@@ -282,6 +330,9 @@ const ChatDetail: React.FC = () => {
     setInputText('');
     setReplyingTo(null);
     setReplyPreview('');
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    setTyping(chatId, false);
+
     virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' });
     
     await sendMessage(chatId, text, replyPayload);
@@ -313,8 +364,12 @@ const ChatDetail: React.FC = () => {
   };
 
   const handleLongPress = (msg: Message) => {
-      if (!isSelectionMode && navigator.vibrate) navigator.vibrate(50);
-      toggleSelection(msg.message_id);
+      if (!isSelectionMode) {
+          if (navigator.vibrate) navigator.vibrate(50);
+          setActiveMessage(msg); // Open options instead of direct select
+      } else {
+          toggleSelection(msg.message_id);
+      }
   };
 
   const toggleSelection = (msgId: string) => {
@@ -324,6 +379,44 @@ const ChatDetail: React.FC = () => {
           else next.add(msgId);
           return next;
       });
+  };
+
+  const handleReaction = async (emoji: string) => {
+      if (activeMessage && chatId) {
+          await toggleReaction(chatId, activeMessage.message_id, emoji);
+          setActiveMessage(null);
+      }
+  };
+
+  const handleMenuAction = async (action: 'reply' | 'copy' | 'select' | 'delete') => {
+      if (!activeMessage || !chatId) return;
+      
+      switch(action) {
+          case 'reply':
+              setReplyingTo(activeMessage);
+              break;
+          case 'copy':
+              let textToCopy = activeMessage.message;
+              if (activeMessage.type === 'encrypted') {
+                  try {
+                      textToCopy = await decryptContent(chatId, activeMessage.message, activeMessage.sender_id);
+                  } catch (e) {
+                      console.error("Failed to decrypt for copy", e);
+                      textToCopy = "Decryption failed";
+                  }
+              }
+              navigator.clipboard.writeText(textToCopy);
+              break;
+          case 'select':
+              toggleSelection(activeMessage.message_id);
+              break;
+          case 'delete':
+               // Special handling for delete flow
+               setSelectedMsgIds(new Set([activeMessage.message_id]));
+               setShowDeleteModal(true);
+               break;
+      }
+      setActiveMessage(null);
   };
 
   const confirmDelete = async () => {
@@ -352,6 +445,27 @@ const ChatDetail: React.FC = () => {
           // Highlight effect could go here
       }
   };
+
+  // Determine typing string
+  const getTypingText = () => {
+      if (!chatId || !typingStatus[chatId]) return null;
+      const activeUserIds = typingStatus[chatId].filter(id => id !== user?.user_id);
+      
+      if (activeUserIds.length === 0) return null;
+      
+      if (currentChat?.type === 'private') {
+          return "Typing...";
+      }
+      
+      if (activeUserIds.length === 1) {
+          const name = contacts.find(c => c.user_id === activeUserIds[0])?.username || "Someone";
+          return `${name} is typing...`;
+      }
+      
+      return `${activeUserIds.length} people are typing...`;
+  };
+
+  const typingText = getTypingText();
 
   return (
     <div className="fixed inset-0 flex flex-col bg-background overflow-hidden chat-bg-pattern" style={{ height: `${viewportHeight}px` }}>
@@ -382,11 +496,15 @@ const ChatDetail: React.FC = () => {
                 <Avatar name={getChatName()} size="sm" online={currentChat?.type === 'private' ? isOtherOnline : undefined} showStatus={currentChat?.type === 'private'} />
                 <div className="flex flex-col">
                     <span className="text-base font-bold truncate leading-tight">{getChatName()}</span>
-                    {currentChat?.type === 'private' && (
-                        <span className={`text-[11px] font-medium flex items-center gap-1.5 transition-colors ${isOtherOnline ? 'text-emerald-500' : 'text-text-sub opacity-70'}`}>
-                            {isOtherOnline && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />}
-                            {isOtherOnline ? 'Online' : 'Offline'}
-                        </span>
+                    {typingText ? (
+                        <span className="text-[11px] font-bold text-primary animate-pulse">{typingText}</span>
+                    ) : (
+                        currentChat?.type === 'private' && (
+                            <span className={`text-[11px] font-medium flex items-center gap-1.5 transition-colors ${isOtherOnline ? 'text-emerald-500' : 'text-text-sub opacity-70'}`}>
+                                {isOtherOnline && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />}
+                                {isOtherOnline ? 'Online' : 'Offline'}
+                            </span>
+                        )
                     )}
                 </div>
             </div>
@@ -468,7 +586,7 @@ const ChatDetail: React.FC = () => {
             </button>
             <textarea
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                onChange={handleInputChange}
                 placeholder="Type a message..."
                 rows={1}
                 className="flex-1 bg-transparent text-text-main text-[16px] border-none focus:ring-0 resize-none min-h-[48px] max-h-[120px] py-3 px-2 placeholder:text-text-sub/50"
@@ -495,6 +613,51 @@ const ChatDetail: React.FC = () => {
         src={viewerSrc} 
         onClose={() => setViewerOpen(false)} 
       />
+
+      {/* Message Options / Reactions Sheet */}
+      <BottomSheet isOpen={!!activeMessage} onClose={() => setActiveMessage(null)}>
+          <div className="flex flex-col gap-6">
+              {/* Reactions Grid */}
+              <div className="flex justify-between px-2">
+                  {REACTIONS.map(emoji => (
+                      <button 
+                        key={emoji}
+                        onClick={() => handleReaction(emoji)}
+                        className={`
+                            text-3xl hover:scale-125 transition-transform p-2 rounded-full
+                            ${activeMessage?.reactions?.[user?.user_id || ''] === emoji ? 'bg-primary/20 scale-110' : ''}
+                        `}
+                      >
+                          {emoji}
+                      </button>
+                  ))}
+              </div>
+              
+              <div className="w-full h-px bg-white/10" />
+
+              {/* Actions */}
+              <div className="flex flex-col gap-1">
+                  <button onClick={() => handleMenuAction('reply')} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-surface-highlight transition-colors text-text-main">
+                      <Icons.Reply className="text-text-sub" />
+                      <span className="font-semibold">Reply</span>
+                  </button>
+                  <button onClick={() => handleMenuAction('copy')} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-surface-highlight transition-colors text-text-main">
+                      <Icons.PaperClip className="text-text-sub" /> 
+                      <span className="font-semibold">Copy Text</span>
+                  </button>
+                  <button onClick={() => handleMenuAction('select')} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-surface-highlight transition-colors text-text-main">
+                      <Icons.Check className="text-text-sub" />
+                      <span className="font-semibold">Select</span>
+                  </button>
+                  {activeMessage?.sender_id === user?.user_id && (
+                    <button onClick={() => handleMenuAction('delete')} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-danger/10 transition-colors text-danger">
+                        <Icons.Trash />
+                        <span className="font-semibold">Delete</span>
+                    </button>
+                  )}
+              </div>
+          </div>
+      </BottomSheet>
     </div>
   );
 };

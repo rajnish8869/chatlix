@@ -2,6 +2,7 @@
 import * as firebaseApp from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache } from "firebase/firestore";
+import { getDatabase } from "firebase/database";
 
 // Workaround for TypeScript error "Module 'firebase/app' has no exported member..."
 // This can occur if type definitions are mismatched or in certain module resolution contexts.
@@ -14,7 +15,8 @@ const firebaseConfig = {
   projectId: "chat-application-5c644",
   storageBucket: "chat-application-5c644.firebasestorage.app",
   messagingSenderId: "508246099822",
-  appId: "1:508246099822:web:c633b2552ed2ad16e0e37f"
+  appId: "1:508246099822:web:c633b2552ed2ad16e0e37f",
+  databaseURL: "https://chat-application-5c644-default-rtdb.firebaseio.com"
 };
 
 console.log("[Firebase] Initializing with config:", firebaseConfig.projectId);
@@ -33,6 +35,8 @@ const db = initializeFirestore(app, {
   experimentalForceLongPolling: true
 });
 
-console.log("[Firebase] Services initialized (Auth, Firestore) with ForceLongPolling");
+const rtdb = getDatabase(app);
 
-export { app, auth, db };
+console.log("[Firebase] Services initialized (Auth, Firestore, RTDB) with ForceLongPolling");
+
+export { app, auth, db, rtdb };

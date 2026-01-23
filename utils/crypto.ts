@@ -132,3 +132,35 @@ export const decryptMessage = async (cipherTextBase64: string, sharedKey: Crypto
     return "🔒 Decryption Failed (Old Key)";
   }
 };
+
+// --- GROUP CHAT ENCRYPTION UTILS ---
+
+// 5. Generate Random AES-GCM Key for Group
+export const generateSymmetricKey = async (): Promise<CryptoKey> => {
+  return await window.crypto.subtle.generateKey(
+    {
+      name: "AES-GCM",
+      length: 256,
+    },
+    true,
+    ["encrypt", "decrypt"]
+  );
+};
+
+// 6. Export Key to String (to be encrypted and sent to others)
+export const exportKeyToString = async (key: CryptoKey): Promise<string> => {
+    const exported = await window.crypto.subtle.exportKey("jwk", key);
+    return JSON.stringify(exported);
+};
+
+// 7. Import Key from String
+export const importKeyFromString = async (keyStr: string): Promise<CryptoKey> => {
+    const jwk = JSON.parse(keyStr);
+    return await window.crypto.subtle.importKey(
+        "jwk",
+        jwk,
+        { name: "AES-GCM" },
+        false,
+        ["encrypt", "decrypt"]
+    );
+};
