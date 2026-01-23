@@ -1,6 +1,6 @@
 
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
-import { Chat, Message, AppSettings, User } from '../types';
+import { Chat, Message, AppSettings, User, ApiResponse } from '../types';
 import { useAuth } from './AuthContext';
 import { chatService } from '../services/chatService';
 import { DEFAULT_SETTINGS } from '../constants';
@@ -41,6 +41,7 @@ interface DataContextType {
   decryptContent: (chatId: string, content: string, senderId: string) => Promise<string>;
   deleteChats: (chatIds: string[]) => Promise<void>;
   deleteMessages: (chatId: string, messageIds: string[]) => Promise<void>;
+  getMessage: (chatId: string, messageId: string) => Promise<ApiResponse<Message>>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -381,6 +382,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   };
 
+  const getMessage = async (chatId: string, messageId: string) => {
+      return chatService.getMessage(chatId, messageId);
+  };
+
   const sendMessage = async (chatId: string, text: string, replyTo?: Message['replyTo']) => {
     if (!user || !text.trim()) return;
     
@@ -457,7 +462,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         chats, messages, settings, syncing, isOffline, contacts, typingStatus,
         refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, retryFailedMessages, 
         createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
-        deleteChats, deleteMessages
+        deleteChats, deleteMessages, getMessage
     }}>
       {children}
     </DataContext.Provider>

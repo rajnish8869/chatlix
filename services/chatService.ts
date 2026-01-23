@@ -361,6 +361,19 @@ export const chatService = {
       }
   },
 
+  getMessage: async (chatId: string, messageId: string): Promise<ApiResponse<Message>> => {
+      try {
+          const docRef = doc(db, `chats/${chatId}/messages`, messageId);
+          const snapshot = await getDoc(docRef);
+          if (snapshot.exists()) {
+              return success({ ...snapshot.data(), message_id: snapshot.id } as Message);
+          }
+          return fail("Message not found");
+      } catch (e: any) {
+          return fail(e.message);
+      }
+  },
+
   uploadImage: async (chatId: string, file: File): Promise<string> => {
       return new Promise((resolve, reject) => {
           const reader = new FileReader();

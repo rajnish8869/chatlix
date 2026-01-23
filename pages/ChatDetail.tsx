@@ -85,9 +85,9 @@ const SwipeableMessage: React.FC<SwipeableMessageProps> = ({
 };
 
 const MessageItem = React.memo(({ 
-    msg, isMe, showDate, onLongPress, onClick, isSelected, decryptFn, senderName, onImageClick, onReply, onScrollTo
+    msg, isMe, showDate, onLongPress, onClick, isSelected, decryptFn, senderName, onImageClick, onReply, onScrollTo, isHighlighted
 }: { 
-    msg: Message, isMe: boolean, showDate: boolean, onLongPress: (msg: Message) => void, onClick: (msg: Message) => void, isSelected: boolean, decryptFn: any, senderName?: string, onImageClick: (url: string) => void, onReply: (msg: Message) => void, onScrollTo: (id: string) => void
+    msg: Message, isMe: boolean, showDate: boolean, onLongPress: (msg: Message) => void, onClick: (msg: Message) => void, isSelected: boolean, decryptFn: any, senderName?: string, onImageClick: (url: string) => void, onReply: (msg: Message) => void, onScrollTo: (id: string) => void, isHighlighted: boolean
 }) => {
   const touchTimer = useRef<any>(undefined);
 
@@ -115,7 +115,7 @@ const MessageItem = React.memo(({
 
   return (
     <SwipeableMessage onReply={() => onReply(msg)} isMe={isMe}>
-        <div className={`px-4 animate-fade-in transition-colors ${isSelected ? 'bg-primary/10 -mx-4 px-8 py-2' : ''}`}>
+        <div className={`px-4 animate-fade-in transition-all duration-300 ${isSelected ? 'bg-primary/10 -mx-4 px-8 py-2' : ''}`}>
         {showDate && (
             <div className="flex justify-center py-6">
             <span className="text-[10px] font-bold tracking-wide text-text-sub bg-surface/80 backdrop-blur border border-white/5 px-3 py-1 rounded-full shadow-sm">
@@ -124,7 +124,7 @@ const MessageItem = React.memo(({
             </div>
         )}
         <div 
-            className={`flex flex-col mb-2 ${isMe ? 'items-end' : 'items-start'}`}
+            className={`flex flex-col mb-2 ${isMe ? 'items-end' : 'items-start'} transition-all duration-700 ${isHighlighted ? 'scale-105' : ''}`}
             onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={handleTouchStart} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd}
             onClick={() => onClick(msg)}
         >
@@ -143,6 +143,7 @@ const MessageItem = React.memo(({
                 ${msg.status === 'failed' ? 'border-2 border-danger' : ''}
                 ${msg.type === 'image' ? 'p-1' : 'px-5 py-3'} 
                 ${reactionCounts ? 'mb-4' : ''}
+                ${isHighlighted ? 'ring-2 ring-primary shadow-[0_0_30px_rgba(var(--primary-color),0.5)]' : ''}
             `}
             >
             {/* Reply Quote Block */}
@@ -224,6 +225,10 @@ const ChatDetail: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   
+  // Scroll & Highlight State
+  const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
+  const [pendingScrollTo, setPendingScrollTo] = useState<{ id: string, attempts: number } | null>(null);
+
   // Image Viewer State
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerSrc, setViewerSrc] = useState('');
@@ -271,6 +276,34 @@ const ChatDetail: React.FC = () => {
         markChatAsRead(chatId);
     }
   }, [chatMessages, chatId, user, markChatAsRead]);
+
+  // Handle Pending Scroll (Recursive Load)
+  useEffect(() => {
+      if (pendingScrollTo && chatId) {
+          const index = chatMessages.findIndex(m => m.message_id === pendingScrollTo.id);
+          
+          if (index !== -1) {
+              // Found it!
+              virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'smooth' });
+              setHighlightedMsgId(pendingScrollTo.id);
+              setPendingScrollTo(null);
+              // Remove highlight after animation
+              setTimeout(() => setHighlightedMsgId(null), 2000);
+          } else {
+              // Not found yet
+              if (pendingScrollTo.attempts < 5) {
+                   // Try loading more
+                   loadMoreMessages(chatId).then(() => {
+                        setPendingScrollTo(prev => prev ? { ...prev, attempts: prev.attempts + 1 } : null);
+                   });
+              } else {
+                  // Give up
+                  setPendingScrollTo(null);
+                  alert("Message is too old to locate.");
+              }
+          }
+      }
+  }, [chatMessages, pendingScrollTo, chatId, loadMoreMessages]);
 
   // Decrypt reply preview on selection
   useEffect(() => {
@@ -439,11 +472,8 @@ const ChatDetail: React.FC = () => {
   };
 
   const scrollToMessage = (msgId: string) => {
-      const index = chatMessages.findIndex(m => m.message_id === msgId);
-      if (index !== -1 && virtuosoRef.current) {
-          virtuosoRef.current.scrollToIndex({ index, align: 'center', behavior: 'smooth' });
-          // Highlight effect could go here
-      }
+      // Initiate search sequence
+      setPendingScrollTo({ id: msgId, attempts: 0 });
   };
 
   // Determine typing string
@@ -547,11 +577,20 @@ const ChatDetail: React.FC = () => {
                     onImageClick={openImage}
                     onReply={setReplyingTo}
                     onScrollTo={scrollToMessage}
+                    isHighlighted={highlightedMsgId === msg.message_id}
                 />
             );
           }}
         />
         <ScrollDownFab onClick={() => virtuosoRef.current?.scrollTo({ top: 10000000, behavior: 'smooth' })} visible={showScrollFab} />
+        
+        {/* Loading Toast for scrolling */}
+        {pendingScrollTo && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-md px-4 py-2 rounded-full shadow-lg border border-primary/20 flex items-center gap-2 z-50 animate-fade-in">
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-bold text-text-main">Locating message...</span>
+            </div>
+        )}
       </div>
 
       <div className="w-full pt-2 pb-2 px-3 flex-shrink-0 z-20">
