@@ -36,13 +36,13 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-full flex flex-col bg-background relative overflow-hidden overscroll-none touch-none">
+    <div className="h-[100dvh] w-full flex flex-col bg-background relative overflow-hidden overscroll-none touch-none">
       {/* Ambient Background Effects */}
       <div className="absolute top-[-30%] left-[-10%] w-[80%] h-[60%] bg-primary/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-15%] w-[70%] h-[70%] bg-purple-600/10 rounded-full blur-3xl animate-pulse pointer-events-none" />
 
       {/* Main Content Area: Logo & Branding - Takes remaining space */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 w-full">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 w-full min-h-0">
         <div className="animate-fade-in flex flex-col items-center justify-center">
           {/* Updated Logo: Chat Bubble Style */}
           <div className="w-28 h-28 rounded-[32px] bg-gradient-to-br from-primary via-indigo-500 to-purple-600 shadow-2xl shadow-primary/30 mb-6 flex items-center justify-center transform hover:scale-105 transition-transform duration-500 relative overflow-hidden group">
@@ -72,10 +72,10 @@ const Login: React.FC = () => {
       </div>
 
       {/* Bottom Form Sheet - Anchored to bottom */}
-      <div className="w-full bg-surface/60 backdrop-blur-2xl border-t border-white/10 rounded-t-[40px] px-8 pt-8 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.5)] z-20 animate-slide-up flex flex-col items-center">
+      <div className="w-full bg-surface/60 backdrop-blur-2xl border-t border-white/10 rounded-t-[40px] px-8 pt-8 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.5)] z-20 animate-slide-up flex flex-col items-center max-h-[85vh] overflow-y-auto no-scrollbar">
         
         {/* Toggle Switch */}
-        <div className="flex p-1 bg-surface-highlight/50 rounded-xl mb-6 relative w-full max-w-xs mx-auto">
+        <div className="flex p-1 bg-surface-highlight/50 rounded-xl mb-6 relative w-full max-w-xs mx-auto flex-shrink-0">
           <div
             className={`absolute top-[4px] bottom-[4px] w-[calc(50%-4px)] bg-white/10 shadow-md rounded-lg transition-all duration-300 ease-out ${isLogin ? "left-[4px]" : "left-[calc(50%+4px)]"}`}
           />
@@ -151,7 +151,7 @@ const Login: React.FC = () => {
           </button>
         </form>
 
-        <p className="text-center text-[10px] text-text-sub mt-6 opacity-40 font-mono tracking-widest">
+        <p className="text-center text-[10px] text-text-sub mt-6 opacity-40 font-mono tracking-widest pb-4">
           v3.2 • ENCRYPTED
         </p>
       </div>

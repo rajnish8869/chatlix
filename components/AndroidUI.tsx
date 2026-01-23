@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 
 // --- Icons (Refined Stroke & Size) ---
@@ -503,13 +504,16 @@ export const BottomSheet: React.FC<{
       <div
         className={`
             bg-surface w-full max-w-2xl rounded-t-[40px] p-8 shadow-2xl border-t border-white/10 transform transition-transform duration-300 pointer-events-auto
+            flex flex-col max-h-[85vh]
             ${isOpen ? "translate-y-0" : "translate-y-full"}
         `}
         style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom))" }}
         onTransitionEnd={handleAnimationEnd}
       >
-        <div className="w-12 h-1 bg-surface-highlight rounded-full mx-auto mb-6 opacity-40" />
-        {children}
+        <div className="w-12 h-1 bg-surface-highlight rounded-full mx-auto mb-6 opacity-40 flex-shrink-0" />
+        <div className="overflow-y-auto no-scrollbar">
+            {children}
+        </div>
       </div>
     </div>
   );
@@ -543,7 +547,7 @@ export const ConfirmationModal: React.FC<{
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-surface w-full max-w-sm rounded-[32px] p-6 shadow-2xl border border-white/10 animate-scale-in">
+      <div className="relative bg-surface w-full max-w-sm rounded-[32px] p-6 shadow-2xl border border-white/10 animate-scale-in max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-bold text-text-main mb-2 text-center">
           {title}
         </h3>

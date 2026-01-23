@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -78,7 +79,7 @@ const NewChat: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 bg-background text-text-main min-h-screen flex flex-col">
+    <div className="flex-1 bg-background text-text-main h-full flex flex-col overflow-hidden">
       <TopBar
         title={
           selectedIds.size > 0 ? `${selectedIds.size} selected` : "New Chat"
@@ -109,7 +110,7 @@ const NewChat: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 px-3 pb-28 pt-3 overflow-y-auto no-scrollbar">
+      <div className="flex-1 px-3 pb-28 pt-3 overflow-y-auto no-scrollbar min-h-0">
         {!groupsEnabled && (
           <div className="bg-amber-500/10 border-l-4 border-amber-500 rounded-r-xl p-4 mb-6 shadow-sm">
             <h4 className="text-sm font-bold text-text-main mb-1">

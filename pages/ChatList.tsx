@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from "react";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
@@ -161,7 +162,7 @@ const ChatList: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 flex flex-col bg-background h-screen overflow-hidden">
+    <div className="flex-1 flex flex-col bg-background h-full overflow-hidden">
       <div
         className={`
          sticky top-0 z-40 pt-[env(safe-area-inset-top)] px-6 pb-4 transition-all duration-300

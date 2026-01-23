@@ -1,3 +1,4 @@
+
 import React, { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -43,14 +44,14 @@ const ChatInfo: React.FC = () => {
     );
 
   return (
-    <div className="flex-1 bg-background text-text-main min-h-screen flex flex-col overflow-hidden">
+    <div className="flex-1 bg-background text-text-main h-full flex flex-col overflow-hidden">
       <TopBar
         title="Chat Details"
         onBack={() => navigate(-1)}
         className="border-b border-white/5"
       />
 
-      <div className="flex-1 overflow-y-auto pb-10">
+      <div className="flex-1 overflow-y-auto pb-10 min-h-0">
         <div className="flex flex-col items-center pt-8 pb-10 px-6 relative">
           <div className="relative mb-6 transform hover:scale-110 transition-transform duration-500">
             <Avatar

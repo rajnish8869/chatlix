@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -215,7 +216,7 @@ const MessageItem = React.memo(
                 } 
                 ${msg.status === "failed" ? "border-2 border-danger" : ""}
                 ${msg.type === "image" ? "p-1" : "px-4 py-3"} 
-                ${reactionCounts ? "mb-5" : ""}
+                ${reactionCounts ? "mb-6" : ""}
                 ${isHighlighted ? "ring-2 ring-primary shadow-[0_0_30px_rgba(var(--primary-color),0.4)]" : ""}
             `}
             >
@@ -288,7 +289,7 @@ const MessageItem = React.memo(
 
               {reactionCounts && (
                 <div
-                  className={`absolute -bottom-4 ${isMe ? "right-2" : "left-2"} flex items-center gap-1 flex-wrap`}
+                  className={`absolute -bottom-3 ${isMe ? "right-2" : "left-2"} flex items-center gap-1 flex-wrap z-10 max-w-full`}
                 >
                   {reactionCounts.map(([emoji, count]) => (
                     <div
@@ -865,13 +866,13 @@ const ChatDetail: React.FC = () => {
         onClose={() => setActiveMessage(null)}
       >
         <div className="flex flex-col gap-4">
-          <div className="flex justify-between px-3">
+          <div className="grid grid-cols-6 gap-2 px-1">
             {REACTIONS.map((emoji) => (
               <button
                 key={emoji}
                 onClick={() => handleReaction(emoji)}
                 className={`
-                            text-4xl p-2 rounded-2xl transition-all hover:scale-110
+                            text-3xl p-2 rounded-2xl transition-all hover:scale-110 flex items-center justify-center
                             ${activeMessage?.reactions?.[user?.user_id || ""] === emoji ? "bg-primary/30 scale-100" : "hover:bg-surface-highlight"}
                         `}
               >

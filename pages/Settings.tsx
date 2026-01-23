@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
@@ -39,7 +40,7 @@ const Settings: React.FC = () => {
 
   return (
     <div
-      className="flex-1 bg-background text-text-main pb-24 overflow-y-auto"
+      className="flex-1 bg-background text-text-main h-full overflow-y-auto pb-24"
       style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom))" }}
     >
       <TopBar title="Settings" className="border-b border-white/5" />
