@@ -12,7 +12,7 @@ interface ChatItemWrapperProps {
   children: React.ReactNode;
   chatId: string;
   onLongPress: (id: string) => void;
-  onClick: (id: string) => void;
+  onClick: (id: string, messageId?: string) => void;
 }
 
 const ChatItemWrapper: React.FC<ChatItemWrapperProps> = ({
@@ -45,6 +45,11 @@ const ChatItemWrapper: React.FC<ChatItemWrapperProps> = ({
   );
 };
 
+// Unified List Item Type
+type ListItem =
+  | { type: "chat"; chat: Chat; id: string }
+  | { type: "message"; chat: Chat; message: Message; snippet: string; id: string };
+
 const ChatList: React.FC = () => {
   const {
     chats,
@@ -70,11 +75,16 @@ const ChatList: React.FC = () => {
   const isSelectionMode = selectedChatIds.size > 0;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  // Search Results
+  const [searchResults, setSearchResults] = useState<ListItem[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+
   useEffect(() => {
     refreshChats();
     loadContacts();
   }, []);
 
+  // Effect to decrypt last_messages for the main list (when not searching)
   useEffect(() => {
     chats.forEach(async (chat) => {
       const lastMsg =
@@ -85,18 +95,123 @@ const ChatList: React.FC = () => {
         lastMsg.type === "encrypted" &&
         !decryptedPreviews[lastMsg.message_id]
       ) {
-        const text = await decryptContent(
-          chat.chat_id,
-          lastMsg.message,
-          lastMsg.sender_id,
-        );
-        setDecryptedPreviews((prev) => ({
-          ...prev,
-          [lastMsg.message_id]: text,
-        }));
+        try {
+          const text = await decryptContent(
+            chat.chat_id,
+            lastMsg.message,
+            lastMsg.sender_id,
+          );
+          setDecryptedPreviews((prev) => ({
+            ...prev,
+            [lastMsg.message_id]: text,
+          }));
+        } catch (e) {
+          // Ignore
+        }
       }
     });
   }, [chats, messages, decryptedPreviews, decryptContent]);
+
+  // Async Search Effect
+  useEffect(() => {
+    const runSearch = async () => {
+      if (!searchQuery.trim()) {
+        setSearchResults(null);
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      const query = searchQuery.toLowerCase();
+      const results: ListItem[] = [];
+      const newDecrypted: Record<string, string> = {};
+
+      for (const chat of chats) {
+        const chatName = getChatName(chat).toLowerCase();
+        const isNameMatch = chatName.includes(query);
+        let hasMessageMatch = false;
+
+        // Message Matching
+        const localMsgs = messages[chat.chat_id] || [];
+        const candidates = [...localMsgs];
+
+        // Ensure last_message is included if not already in localMsgs
+        if (
+          chat.last_message &&
+          !localMsgs.some(
+            (m) => m.message_id === chat.last_message!.message_id,
+          )
+        ) {
+          candidates.push(chat.last_message);
+        }
+
+        // Sort candidates by timestamp desc (newest first)
+        candidates.sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        );
+
+        // Find matches
+        for (const m of candidates) {
+          let text = m.message;
+          if (m.type === "image") {
+            text = "image";
+          } else if (m.type === "encrypted") {
+            // Check cache
+            if (decryptedPreviews[m.message_id]) {
+              text = decryptedPreviews[m.message_id];
+            } else if (newDecrypted[m.message_id]) {
+              text = newDecrypted[m.message_id];
+            } else {
+              try {
+                text = await decryptContent(
+                  chat.chat_id,
+                  m.message,
+                  m.sender_id,
+                );
+                newDecrypted[m.message_id] = text;
+              } catch (e) {
+                text = "";
+              }
+            }
+          }
+
+          if (text && text.toLowerCase().includes(query)) {
+            hasMessageMatch = true;
+            results.push({
+              type: "message",
+              chat: chat,
+              message: m,
+              snippet: text,
+              id: `${chat.chat_id}_${m.message_id}`,
+            });
+          }
+        }
+
+        // If Name matches and we don't have message matches (or want to show generic entry too)
+        // Here: if generic match is desired, add it.
+        // We will add it if NO message matches found, so user still sees the chat.
+        if (isNameMatch && !hasMessageMatch) {
+          results.push({
+            type: "chat",
+            chat: chat,
+            id: chat.chat_id,
+          });
+        }
+      }
+
+      // Batch update cached previews
+      if (Object.keys(newDecrypted).length > 0) {
+        setDecryptedPreviews((prev) => ({ ...prev, ...newDecrypted }));
+      }
+
+      setSearchResults(results);
+      setIsSearching(false);
+    };
+
+    const debounce = setTimeout(runSearch, 500);
+    return () => clearTimeout(debounce);
+  }, [searchQuery, chats, messages, decryptContent]);
 
   const getLastMessage = (chat: Chat): Message | undefined => {
     const localMsgs = messages[chat.chat_id];
@@ -116,11 +231,19 @@ const ChatList: React.FC = () => {
     return chat.name || "Chat";
   };
 
-  const handleChatClick = (chatId: string) => {
+  const handleItemClick = (item: ListItem) => {
     if (isSelectionMode) {
-      toggleSelection(chatId);
+      toggleSelection(item.chat.chat_id);
     } else {
-      navigate(`/chat/${chatId}`);
+      if (item.type === "message") {
+        // Navigate and scroll to message
+        navigate(`/chat/${item.chat.chat_id}`, {
+          state: { scrollToMessageId: item.message.message_id },
+        });
+      } else {
+        // Just navigate
+        navigate(`/chat/${item.chat.chat_id}`);
+      }
     }
   };
 
@@ -157,9 +280,11 @@ const ChatList: React.FC = () => {
     return active.some((id) => id !== user?.user_id);
   };
 
-  const filteredChats = chats.filter((chat) =>
-    getChatName(chat).toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  // Prepare data for Virtuoso
+  const data: ListItem[] =
+    searchResults !== null
+      ? searchResults
+      : chats.map((c) => ({ type: "chat", chat: c, id: c.chat_id }));
 
   return (
     <div className="flex-1 flex flex-col bg-background h-full overflow-hidden">
@@ -193,17 +318,25 @@ const ChatList: React.FC = () => {
             <>
               {isSearchOpen ? (
                 <div className="flex items-center gap-2 w-full animate-fade-in">
-                  <input
-                    autoFocus
-                    className="flex-1 bg-surface border border-white/10 rounded-2xl px-4 py-2.5 text-sm text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary/50 focus:outline-none placeholder:text-text-sub/50"
-                    placeholder="Search chats..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+                  <div className="relative flex-1">
+                    <input
+                      autoFocus
+                      className="w-full bg-surface border border-white/10 rounded-2xl pl-4 pr-10 py-2.5 text-sm text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary/50 focus:outline-none placeholder:text-text-sub/50"
+                      placeholder="Search messages..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {isSearching && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={() => {
                       setIsSearchOpen(false);
                       setSearchQuery("");
+                      setSearchResults(null);
                     }}
                     className="p-2 text-text-sub hover:bg-surface-highlight/50 rounded-full transition-colors"
                   >
@@ -217,7 +350,7 @@ const ChatList: React.FC = () => {
                       Messages
                     </h1>
                     <p className="text-[11px] text-text-sub opacity-60 font-medium">
-                      {filteredChats.length} conversations
+                      {chats.length} conversations
                     </p>
                   </div>
                   <button
@@ -233,7 +366,7 @@ const ChatList: React.FC = () => {
         </div>
       </div>
 
-      {filteredChats.length === 0 ? (
+      {data.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center space-y-6">
           <div className="relative">
             <div className="absolute inset-0 bg-primary/20 rounded-full blur-2xl" />
@@ -242,42 +375,69 @@ const ChatList: React.FC = () => {
             </div>
           </div>
           <div className="text-center space-y-2">
-            <p className="text-lg font-bold text-text-main">No conversations</p>
+            <p className="text-lg font-bold text-text-main">
+              {searchQuery ? "No matching messages" : "No conversations"}
+            </p>
             <p className="text-sm text-text-sub opacity-70">
-              Start a chat to begin messaging
+              {searchQuery
+                ? "Try a different search term"
+                : "Start a chat to begin messaging"}
             </p>
           </div>
         </div>
       ) : (
         <Virtuoso
           className="flex-1 pb-32 no-scrollbar"
-          data={filteredChats}
-          totalCount={filteredChats.length}
-          itemContent={(index, chat) => {
-            const lastMsg = getLastMessage(chat);
-            const unread =
-              user &&
-              lastMsg &&
-              lastMsg.sender_id !== user.user_id &&
-              lastMsg.status !== "read";
+          data={data}
+          totalCount={data.length}
+          itemContent={(index, item) => {
+            const chat = item.chat;
             const chatName = getChatName(chat);
             const isSelected = selectedChatIds.has(chat.chat_id);
             const typing = isTyping(chat.chat_id);
 
-            let previewText = lastMsg?.message || "";
-            if (lastMsg?.type === "encrypted") {
-              previewText =
-                decryptedPreviews[lastMsg.message_id] || "Encrypted message";
+            let previewText = "";
+            let displayTime = "";
+            let highlight = false;
+
+            if (item.type === "message") {
+              previewText = item.snippet;
+              displayTime = item.message.timestamp;
+              highlight = true;
+            } else {
+              // Standard Chat Item
+              const lastMsg = getLastMessage(chat);
+              if (lastMsg) {
+                displayTime = lastMsg.timestamp;
+                if (lastMsg.type === "encrypted") {
+                  previewText =
+                    decryptedPreviews[lastMsg.message_id] ||
+                    "Encrypted message";
+                } else if (lastMsg.type === "image") {
+                  previewText = "📷 Photo";
+                } else {
+                  previewText = lastMsg.message;
+                }
+              } else {
+                previewText = "Start a conversation";
+              }
             }
-            if (!lastMsg) previewText = "Start a conversation";
-            if (lastMsg?.type === "image") previewText = "📷 Photo";
+
+            // Unread logic (only for generic chat items, not search results usually, but keeps consistent)
+            const lastMsg = getLastMessage(chat);
+            const unread =
+              !highlight &&
+              user &&
+              lastMsg &&
+              lastMsg.sender_id !== user.user_id &&
+              lastMsg.status !== "read";
 
             return (
               <div className="px-3 py-2">
                 <ChatItemWrapper
                   chatId={chat.chat_id}
                   onLongPress={handleLongPress}
-                  onClick={handleChatClick}
+                  onClick={() => handleItemClick(item)}
                 >
                   <div
                     className={`
@@ -314,49 +474,60 @@ const ChatList: React.FC = () => {
                         <span
                           className={`text-[10px] font-semibold flex-shrink-0 ${unread ? "text-primary font-bold" : "text-text-sub opacity-60"}`}
                         >
-                          {lastMsg
-                            ? new Date(lastMsg.timestamp).toLocaleTimeString(
-                                [],
-                                { hour: "2-digit", minute: "2-digit" },
-                              )
+                          {displayTime
+                            ? new Date(displayTime).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
                             : ""}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
-                        {typing ? (
+                        {typing && !highlight ? (
                           <p className="text-[13px] truncate text-primary font-bold animate-pulse">
                             Typing...
                           </p>
                         ) : (
                           <>
-                            {lastMsg?.sender_id === user?.user_id && (
-                              <span className="flex-shrink-0">
-                                {lastMsg?.status === "sent" && (
-                                  <Icons.Check className="w-3 h-3 text-text-sub opacity-70" />
-                                )}
-                                {lastMsg?.status === "delivered" && (
-                                  <Icons.DoubleCheck className="w-3 h-3 text-text-sub opacity-70" />
-                                )}
-                                {lastMsg?.status === "read" && (
-                                  <Icons.DoubleCheck className="w-3 h-3 text-primary" />
-                                )}
-                              </span>
-                            )}
+                            {!highlight &&
+                              lastMsg?.sender_id === user?.user_id && (
+                                <span className="flex-shrink-0">
+                                  {lastMsg?.status === "sent" && (
+                                    <Icons.Check className="w-3 h-3 text-text-sub opacity-70" />
+                                  )}
+                                  {lastMsg?.status === "delivered" && (
+                                    <Icons.DoubleCheck className="w-3 h-3 text-text-sub opacity-70" />
+                                  )}
+                                  {lastMsg?.status === "read" && (
+                                    <Icons.DoubleCheck className="w-3 h-3 text-primary" />
+                                  )}
+                                </span>
+                              )}
                             <p
                               className={`text-[13px] truncate ${unread ? "text-text-main font-semibold" : "text-text-sub opacity-70"}`}
                             >
-                              {lastMsg?.type === "encrypted" && (
+                              {!highlight && lastMsg?.type === "encrypted" && (
                                 <span className="mr-0.5 inline-block">
                                   <Icons.Lock className="w-2.5 h-2.5 relative bottom-[1px]" />
                                 </span>
                               )}
-                              {previewText}
+
+                              {highlight ? (
+                                <span>
+                                  Found:{" "}
+                                  <span className="text-primary font-bold">
+                                    {previewText}
+                                  </span>
+                                </span>
+                              ) : (
+                                previewText
+                              )}
                             </p>
                           </>
                         )}
                       </div>
                     </div>
-                    {unread && (
+                    {unread && !searchQuery && (
                       <div className="w-2.5 h-2.5 bg-primary rounded-full shadow-glow flex-shrink-0" />
                     )}
                   </div>

@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -169,21 +169,6 @@ const MessageItem = React.memo(
       if (touchTimer.current) clearTimeout(touchTimer.current);
     };
 
-    const getNameColor = (name: string) => {
-      const colors = [
-        "text-blue-500",
-        "text-emerald-500",
-        "text-amber-500",
-        "text-purple-500",
-        "text-rose-500",
-      ];
-      let hash = 0;
-      for (let i = 0; i < name.length; i++) {
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      return colors[Math.abs(hash) % colors.length];
-    };
-
     // Aggregate reactions
     const reactionCounts = React.useMemo(() => {
       if (!msg.reactions) return null;
@@ -336,6 +321,7 @@ const MessageItem = React.memo(
 const ChatDetail: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const {
     messages,
@@ -424,6 +410,14 @@ const ChatDetail: React.FC = () => {
     }
   }, [chatMessages, chatId, user, markChatAsRead]);
 
+  // Check for scroll-to request from navigation state
+  useEffect(() => {
+    const state = location.state as { scrollToMessageId?: string } | null;
+    if (state?.scrollToMessageId) {
+      setPendingScrollTo({ id: state.scrollToMessageId, attempts: 0 });
+    }
+  }, []); // Run once on mount
+
   // Handle Pending Scroll (Recursive Load)
   useEffect(() => {
     if (pendingScrollTo && chatId) {
@@ -433,18 +427,23 @@ const ChatDetail: React.FC = () => {
 
       if (index !== -1) {
         // Found it!
-        virtuosoRef.current?.scrollToIndex({
-          index,
-          align: "center",
-          behavior: "smooth",
-        });
+        // Use timeout to ensure Virtuoso is ready and rendered.
+        // Use 'auto' behavior for instant jump on load.
+        setTimeout(() => {
+          virtuosoRef.current?.scrollToIndex({
+            index,
+            align: "center",
+            behavior: "auto",
+          });
+        }, 200);
+
         setHighlightedMsgId(pendingScrollTo.id);
         setPendingScrollTo(null);
         // Remove highlight after animation
-        setTimeout(() => setHighlightedMsgId(null), 2000);
+        setTimeout(() => setHighlightedMsgId(null), 2500);
       } else {
         // Not found yet
-        if (pendingScrollTo.attempts < 5) {
+        if (pendingScrollTo.attempts < 10) {
           // Try loading more
           loadMoreMessages(chatId).then(() => {
             setPendingScrollTo((prev) =>
@@ -452,9 +451,8 @@ const ChatDetail: React.FC = () => {
             );
           });
         } else {
-          // Give up
+          // Give up after enough tries
           setPendingScrollTo(null);
-          alert("Message is too old to locate.");
         }
       }
     }
@@ -751,6 +749,9 @@ const ChatDetail: React.FC = () => {
           overscan={500}
           atBottomStateChange={(atBottom) => setShowScrollFab(!atBottom)}
           followOutput={(isAtBottom) => {
+            // If we are actively highlighting a message (from search), don't force scroll to bottom
+            if (highlightedMsgId) return false;
+
             const lastMsg = chatMessages[chatMessages.length - 1];
             if (lastMsg && String(lastMsg.sender_id) === String(user?.user_id))
               return "smooth";
