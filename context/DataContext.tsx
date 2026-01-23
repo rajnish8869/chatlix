@@ -19,6 +19,16 @@ import { db } from '../services/firebase'; // Direct db access for user key fetc
 // Type alias for unsubscribe function
 type UnsubscribeFunc = () => void;
 
+interface QueueItem {
+    id: string; // The generated message ID
+    chatId: string;
+    senderId: string;
+    content: string;
+    type: 'text' | 'encrypted' | 'image';
+    replyTo?: Message['replyTo'];
+    timestamp: number;
+}
+
 interface DataContextType {
   chats: Chat[];
   messages: Record<string, Message[]>;
@@ -59,6 +69,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [syncing, setSyncing] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   
+  // Offline Queue
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  
   // Typing Status State
   const [typingStatus, setTypingStatusState] = useState<Record<string, string[]>>({});
   
@@ -73,16 +86,71 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sharedKeysCache = useRef<Record<string, { key: CryptoKey, pubKeyStr: string }>>({});
   const groupKeysCache = useRef<Record<string, CryptoKey>>({});
 
+  // 1. Load Queue from Storage
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
+      const savedQueue = localStorage.getItem('chatlix_offline_queue');
+      if (savedQueue) {
+          try {
+              setQueue(JSON.parse(savedQueue));
+          } catch (e) {
+              console.error("Failed to parse offline queue", e);
+          }
+      }
+  }, []);
+
+  // 2. Persist Queue to Storage
+  useEffect(() => {
+      localStorage.setItem('chatlix_offline_queue', JSON.stringify(queue));
+  }, [queue]);
+
+  const processQueue = useCallback(async () => {
+      if (queue.length === 0 || !navigator.onLine) return;
+      
+      console.log(`[Queue] Processing ${queue.length} messages...`);
+      const currentQueue = [...queue];
+      const remainingQueue: QueueItem[] = [];
+
+      for (const item of currentQueue) {
+          try {
+              // Idempotent Send: pass the item.id (the temporary ID) as customMessageId
+              await chatService.sendMessage(
+                  item.chatId,
+                  item.senderId,
+                  item.content,
+                  item.type,
+                  item.replyTo,
+                  item.id
+              );
+              console.log(`[Queue] Sent message ${item.id}`);
+          } catch (e) {
+              console.error(`[Queue] Failed to send ${item.id}`, e);
+              remainingQueue.push(item);
+          }
+      }
+
+      setQueue(remainingQueue);
+  }, [queue]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+        setIsOffline(false);
+        processQueue();
+    };
     const handleOffline = () => setIsOffline(true);
+    
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    
+    // Attempt processing on mount if online
+    if (navigator.onLine) {
+        processQueue();
+    }
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [processQueue]);
 
   // Sync Typing Listeners with Chats
   useEffect(() => {
@@ -432,6 +500,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let content = text;
     let type: 'text' | 'encrypted' = 'text';
     
+    // Prepare encryption if necessary
     const chat = chats.find(c => c.chat_id === chatId);
     
     if (chat) {
@@ -464,7 +533,58 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }
 
-    await chatService.sendMessage(chatId, user.user_id, content, type, replyTo);
+    // 1. Generate Optimistic ID and Message
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = new Date().toISOString();
+    
+    const optimisticMsg: Message = {
+        message_id: tempId,
+        chat_id: chatId,
+        sender_id: user.user_id,
+        message: content,
+        type: type,
+        timestamp: timestamp,
+        status: 'pending',
+        replyTo: replyTo
+    };
+
+    // 2. Update UI Immediately
+    setMessages(prev => {
+        const current = prev[chatId] || [];
+        return {
+            ...prev,
+            [chatId]: [...current, optimisticMsg]
+        };
+    });
+
+    // 3. Queue Logic
+    const addToQueue = () => {
+        const queueItem: QueueItem = {
+            id: tempId,
+            chatId,
+            senderId: user.user_id,
+            content,
+            type,
+            replyTo,
+            timestamp: Date.now()
+        };
+        setQueue(prev => [...prev, queueItem]);
+    };
+
+    if (!navigator.onLine) {
+        addToQueue();
+        return;
+    }
+
+    // 4. Try Network
+    try {
+        await chatService.sendMessage(chatId, user.user_id, content, type, replyTo, tempId);
+        // On success, Firestore subscription will update status to 'sent' automatically
+        // because we used the same `tempId` for the document ID.
+    } catch (e) {
+        console.error("SendMessage failed, adding to queue", e);
+        addToQueue();
+    }
   };
 
   const sendImage = async (chatId: string, file: File) => {
@@ -501,7 +621,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await chatService.deleteMessages(chatId, messageIds);
   };
 
-  const retryFailedMessages = () => {};
+  const retryFailedMessages = () => {
+      processQueue();
+  };
+  
   const refreshChats = async () => {};
 
   return (

@@ -420,7 +420,8 @@ export const chatService = {
       senderId: string, 
       content: string, 
       type: 'text' | 'encrypted' | 'image' = 'text',
-      replyTo?: Message['replyTo']
+      replyTo?: Message['replyTo'],
+      customMessageId?: string
   ): Promise<ApiResponse<Message>> => {
     try {
       const timestamp = new Date().toISOString();
@@ -437,7 +438,14 @@ export const chatService = {
           msgData.replyTo = replyTo;
       }
 
-      const msgRef = await addDoc(collection(db, `chats/${chatId}/messages`), msgData);
+      let msgRef;
+      if (customMessageId) {
+          // Idempotent write using setDoc
+          msgRef = doc(db, `chats/${chatId}/messages`, customMessageId);
+          await setDoc(msgRef, msgData);
+      } else {
+          msgRef = await addDoc(collection(db, `chats/${chatId}/messages`), msgData);
+      }
       
       updateDoc(doc(db, 'chats', chatId), {
           last_message: { ...msgData, message_id: msgRef.id },
