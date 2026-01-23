@@ -49,6 +49,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { user } = useAuth();
   const [chats, setChats] = useState<Chat[]>([]);
   const [contacts, setContacts] = useState<User[]>([]);
+  // We keep raw firestore users separately so we can merge with RTDB status
+  const [rawFirestoreUsers, setRawFirestoreUsers] = useState<User[]>([]);
+  const [rtdbPresence, setRtdbPresence] = useState<Record<string, any>>({});
+
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [syncing, setSyncing] = useState(false);
@@ -61,6 +65,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const chatsUnsub = useRef<UnsubscribeFunc | null>(null);
   const contactsUnsub = useRef<UnsubscribeFunc | null>(null);
+  const presenceUnsub = useRef<UnsubscribeFunc | null>(null);
   const messageUnsubs = useRef<Record<string, UnsubscribeFunc>>({});
   const typingUnsubs = useRef<Record<string, UnsubscribeFunc>>({});
   
@@ -91,18 +96,47 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               });
           }
       });
-
-      // Cleanup listeners for chats that are removed? (Optional optimisation)
   }, [chats]);
+
+  // Combine Firestore Profiles + RTDB Presence
+  useEffect(() => {
+    if (rawFirestoreUsers.length === 0) {
+        setContacts([]);
+        return;
+    }
+
+    const mergedContacts = rawFirestoreUsers.map(u => {
+        const presence = rtdbPresence[u.user_id];
+        return {
+            ...u,
+            status: presence?.state || 'offline',
+            // Prefer RTDB timestamp for accuracy, fallback to Firestore
+            last_seen: presence?.last_changed ? new Date(presence.last_changed).toISOString() : u.last_seen
+        };
+    });
+
+    // Sort: Online first, then alphabetical
+    mergedContacts.sort((a, b) => {
+        if (a.status === 'online' && b.status !== 'online') return -1;
+        if (a.status !== 'online' && b.status === 'online') return 1;
+        return a.username.localeCompare(b.username);
+    });
+
+    setContacts(mergedContacts);
+  }, [rawFirestoreUsers, rtdbPresence]);
+
 
   useEffect(() => {
     if (!user) {
         setChats([]);
         setContacts([]);
+        setRawFirestoreUsers([]);
+        setRtdbPresence({});
         setTypingStatusState({});
         groupKeysCache.current = {};
         if (chatsUnsub.current) chatsUnsub.current();
         if (contactsUnsub.current) contactsUnsub.current();
+        if (presenceUnsub.current) presenceUnsub.current();
         // Cleanup typing subs
         Object.values(typingUnsubs.current).forEach((unsub: any) => {
             if (typeof unsub === 'function') unsub();
@@ -113,6 +147,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setSyncing(true);
     
+    // 1. Subscribe to Chats
     chatsUnsub.current = chatService.subscribeToChats(user.user_id, (newChats) => {
         setChats(newChats);
         setSyncing(false);
@@ -126,39 +161,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
     }) as UnsubscribeFunc;
 
+    // 2. Subscribe to Users (Firestore Profile Data)
     contactsUnsub.current = chatService.subscribeToUsers(user.user_id, (users) => {
-        const now = new Date().getTime();
-        const enhancedContacts = users.map(c => {
-            const lastSeenTime = new Date(c.last_seen).getTime();
-            const isOnline = (now - lastSeenTime) < 2 * 60 * 1000; 
-            return { ...c, status: isOnline ? 'online' : 'offline' };
-        });
-        
-        enhancedContacts.sort((a, b) => {
-            if (a.status === 'online' && b.status !== 'online') return -1;
-            if (a.status !== 'online' && b.status === 'online') return 1;
-            return a.username.localeCompare(b.username);
-        });
-        
-        setContacts(enhancedContacts);
+        setRawFirestoreUsers(users);
     }) as UnsubscribeFunc;
 
-    const decayTimer = setInterval(() => {
-        setContacts(prev => {
-             const now = new Date().getTime();
-             let changed = false;
-             const next = prev.map(c => {
-                 const lastSeenTime = new Date(c.last_seen).getTime();
-                 const isOnline = (now - lastSeenTime) < 2 * 60 * 1000;
-                 if (c.status === 'online' && !isOnline) {
-                     changed = true;
-                     return { ...c, status: 'offline' };
-                 }
-                 return c;
-             });
-             return changed ? next : prev;
-        });
-    }, 15000);
+    // 3. Subscribe to Global Presence (RTDB)
+    presenceUnsub.current = chatService.subscribeToGlobalPresence((presenceMap) => {
+        setRtdbPresence(presenceMap);
+    }) as unknown as UnsubscribeFunc;
 
     if (chatService.fetchSettings) {
         chatService.fetchSettings().then(res => {
@@ -169,7 +180,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
         if (chatsUnsub.current) chatsUnsub.current();
         if (contactsUnsub.current) contactsUnsub.current();
-        clearInterval(decayTimer);
+        if (presenceUnsub.current) presenceUnsub.current();
         Object.values(messageUnsubs.current).forEach(unsub => {
             if (typeof unsub === 'function') unsub();
         });
@@ -182,10 +193,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Retrieve 1-on-1 Shared Secret
   const getSharedKey = async (otherUserId: string): Promise<CryptoKey | null> => {
       const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user?.user_id}`);
+      // Find contact in contacts state (which has merged data)
       let otherUser = contacts.find(c => c.user_id === otherUserId);
 
-      // Fallback: If contact not in list (e.g. fresh group load), try fetch from Firebase?
-      // For now, rely on loaded contacts. If not found, encryption fails.
+      // Fallback: If contact not in list (e.g. fresh group load), try fetch from Firestore?
+      // Since contacts is populated via subscription, it should be there.
       
       if (!myPrivKeyStr || !otherUser?.publicKey) return null;
 
@@ -277,9 +289,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // We need public keys for all participants.
-        // `contacts` state might not have everyone if we just searched.
-        // For robustness, we should fetch fresh profiles for participants not in `contacts`.
-        // Simplification: Assume they are in contacts or we fetch them.
         
         for (const pId of allParticipants) {
              let pUser = contacts.find(c => c.user_id === pId);
@@ -351,8 +360,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const historyMsgs = res.data;
               setMessages(prev => {
                   const current = prev[chatId] || [];
-                  // Prepend history. Since history is older, we put it first.
-                  // But to be safe against overlap, we use the Map method again.
                   const msgMap = new Map();
                   
                   // Add history first
@@ -393,10 +400,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
         } else if (chat.type === 'group' && chat.encrypted_keys) {
-            // Check cache for group key, or lazy load it (decrypt it)
-            // For simplicity, we assume we might need to load it if not cached.
             if (!groupKeysCache.current[chatId]) {
-                 // Try decrypt just to populate cache
                  await decryptContent(chatId, "WARMUP", user.user_id);
             }
             

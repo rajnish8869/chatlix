@@ -131,11 +131,12 @@ export const chatService = {
       }
   },
 
+  // Note: This Firestore update is kept for historical/profile data, 
+  // but real-time presence is now handled by initializePresence via RTDB
   updateHeartbeat: async (userId: string) => {
       try {
           await updateDoc(doc(db, 'users', userId), {
-              last_seen: new Date().toISOString(),
-              status: 'online'
+              last_seen: new Date().toISOString()
           });
       } catch (e) {
           // Ignore network errors for heartbeat
@@ -144,6 +145,14 @@ export const chatService = {
 
   setUserOffline: async (userId: string) => {
       try {
+          // Remove from RTDB
+          const statusRef = ref(rtdb, `status/${userId}`);
+          await set(statusRef, {
+              state: 'offline',
+              last_changed: serverTimestamp(),
+          });
+          
+          // Update Firestore for persistence
           await updateDoc(doc(db, 'users', userId), {
               status: 'offline',
               last_seen: new Date().toISOString()
@@ -167,11 +176,7 @@ export const chatService = {
           }
       });
       
-      users.sort((a, b) => {
-          if (a.status === 'online' && b.status !== 'online') return -1;
-          if (a.status !== 'online' && b.status === 'online') return 1;
-          return a.username.localeCompare(b.username);
-      });
+      users.sort((a, b) => a.username.localeCompare(b.username));
       
       return success(users);
     } catch (e: any) {
@@ -179,6 +184,7 @@ export const chatService = {
     }
   },
 
+  // Returns Firestore user profiles. Status is merged in DataContext from RTDB.
   subscribeToUsers: (currentUserId: string, callback: (users: User[]) => void) => {
       const q = query(collection(db, 'users'), limit(100));
       return onSnapshot(q, (snapshot) => {
@@ -190,13 +196,50 @@ export const chatService = {
                       users.push({ 
                           ...data, 
                           user_id: doc.id,
+                          // Default to offline in profile, overriden by RTDB
+                          status: 'offline', 
                           last_seen: data.last_seen || new Date(0).toISOString(),
-                          status: data.status || 'offline'
                       } as User);
                   }
               }
           });
           callback(users);
+      });
+  },
+
+  // --- PRESENCE (RTDB) ---
+
+  initializePresence: (userId: string) => {
+      const userStatusDatabaseRef = ref(rtdb, `status/${userId}`);
+      const connectedRef = ref(rtdb, '.info/connected');
+
+      onValue(connectedRef, (snapshot) => {
+          if (snapshot.val() === false) {
+              return;
+          }
+
+          // When we disconnect, remove this device
+          onDisconnect(userStatusDatabaseRef).set({
+              state: 'offline',
+              last_changed: serverTimestamp(),
+          }).then(() => {
+              // When we connect, set status to online
+              set(userStatusDatabaseRef, {
+                  state: 'online',
+                  last_changed: serverTimestamp(),
+              });
+          });
+      });
+  },
+
+  subscribeToGlobalPresence: (callback: (presenceMap: Record<string, any>) => void) => {
+      const allStatusRef = ref(rtdb, 'status');
+      return onValue(allStatusRef, (snapshot) => {
+          if (snapshot.exists()) {
+              callback(snapshot.val());
+          } else {
+              callback({});
+          }
       });
   },
 

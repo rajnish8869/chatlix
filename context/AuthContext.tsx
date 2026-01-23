@@ -23,7 +23,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const heartbeatInterval = useRef<any>(null);
 
   // Firebase Auth Listener
   useEffect(() => {
@@ -95,35 +94,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(finalUser);
             setIsLoading(false);
 
-            // 4. Start Heartbeat (Real-time Presence)
-            if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
-            chatService.updateHeartbeat(currentUser.uid); // Immediate update
-            
-            heartbeatInterval.current = setInterval(() => {
-                if (document.visibilityState === 'visible') {
-                    chatService.updateHeartbeat(currentUser.uid);
-                }
-            }, 60000); // Update every 60s
+            // 4. Initialize Realtime Presence (RTDB)
+            chatService.initializePresence(currentUser.uid);
 
         } else {
-            if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
             setUser(null);
             setIsLoading(false);
         }
     });
 
-    // Offline on window close
-    const handleUnload = () => {
-        if (auth.currentUser) {
-            navigator.sendBeacon && navigator.sendBeacon("...", "offline"); 
-        }
-    };
-    window.addEventListener('beforeunload', handleUnload);
-
     return () => {
         unsubscribe();
-        if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
-        window.removeEventListener('beforeunload', handleUnload);
     };
   }, []);
 
