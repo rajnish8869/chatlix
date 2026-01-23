@@ -50,7 +50,7 @@ const SplashScreen: React.FC = () => (
       </div>
     </div>
     
-    <div className="absolute bottom-8 text-[10px] font-bold text-text-sub opacity-40 tracking-[0.2em] uppercase">
+    <div className="absolute bottom-[calc(2rem+env(safe-area-inset-bottom))] text-[10px] font-bold text-text-sub opacity-40 tracking-[0.2em] uppercase">
         Encrypted Messenger
     </div>
   </div>
