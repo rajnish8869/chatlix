@@ -193,23 +193,54 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Retrieve 1-on-1 Shared Secret
   const getSharedKey = async (otherUserId: string): Promise<CryptoKey | null> => {
-      const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user?.user_id}`);
-      // Find contact in contacts state (which has merged data)
-      let otherUser = contacts.find(c => c.user_id === otherUserId);
+      if (!user) return null;
+      const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user.user_id}`);
+      if (!myPrivKeyStr) return null;
 
-      // Fallback: If contact not in list (e.g. fresh group load), try fetch from Firestore?
-      // Since contacts is populated via subscription, it should be there.
-      
-      if (!myPrivKeyStr || !otherUser?.publicKey) return null;
+      let targetPubKey = '';
 
+      // 1. Check if it is Me
+      if (otherUserId === user.user_id) {
+          targetPubKey = user.publicKey || '';
+      } 
+      // 2. Check Contacts List
+      else {
+          const contact = contacts.find(c => c.user_id === otherUserId);
+          if (contact) {
+              targetPubKey = contact.publicKey || '';
+          } else {
+              // 3. Fallback: Fetch from Firestore (if not in loaded contacts)
+              // This is crucial for fixing "Key Mismatch" when chatting with users not in the initial list
+              try {
+                 // Optimization: Check rawFirestoreUsers first
+                 const raw = rawFirestoreUsers.find(u => u.user_id === otherUserId);
+                 if (raw && raw.publicKey) {
+                     targetPubKey = raw.publicKey;
+                 } else {
+                     const userDocRef = doc(db, 'users', otherUserId);
+                     const userSnap = await getDoc(userDocRef);
+                     if (userSnap.exists()) {
+                         const userData = userSnap.data() as User;
+                         targetPubKey = userData.publicKey || '';
+                     }
+                 }
+              } catch (e) {
+                  console.error(`Failed to fetch key for ${otherUserId}`, e);
+              }
+          }
+      }
+
+      if (!targetPubKey) return null;
+
+      // Check Cache
       const cached = sharedKeysCache.current[otherUserId];
-      if (cached && cached.pubKeyStr === otherUser.publicKey) {
+      if (cached && cached.pubKeyStr === targetPubKey) {
           return cached.key;
       }
 
       try {
-          const key = await deriveSharedKey(myPrivKeyStr, otherUser.publicKey);
-          sharedKeysCache.current[otherUserId] = { key, pubKeyStr: otherUser.publicKey };
+          const key = await deriveSharedKey(myPrivKeyStr, targetPubKey);
+          sharedKeysCache.current[otherUserId] = { key, pubKeyStr: targetPubKey };
           return key;
       } catch (e) {
           console.error("Key Derivation Failed", e);
@@ -253,15 +284,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } 
       
       // --- PRIVATE CHAT DECRYPTION ---
-      const otherId = chat.participants.find(p => p !== user?.user_id) || senderId;
-      if (otherId === user?.user_id) { 
-         // Chat with self
-         const key = await getSharedKey(user?.user_id || '');
-         if(key) return await decryptMessage(content, key);
-      } else {
-         const key = await getSharedKey(otherId);
-         if(key) return await decryptMessage(content, key);
+      // For private chats, we need the shared secret between Me and the Other person.
+      // If I sent it, I encrypted it with Shared(Me, Other).
+      // If Other sent it, they encrypted it with Shared(Other, Me).
+      // These shared secrets are mathematically identical.
+      
+      const otherId = chat.participants.find(p => p !== user?.user_id);
+      
+      // Case: Chat with someone else
+      if (otherId) {
+          const key = await getSharedKey(otherId);
+          if (key) return await decryptMessage(content, key);
+      } 
+      // Case: Chat with self (Note to Self) or fallback
+      else if (chat.participants.includes(user?.user_id || '')) {
+          const key = await getSharedKey(user?.user_id || '');
+          if (key) return await decryptMessage(content, key);
       }
+      
       return "🔒 Encrypted Message (Key Mismatch)";
   };
 
@@ -399,6 +439,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const otherId = chat.participants.find(p => p !== user.user_id);
             if (otherId) {
                 const key = await getSharedKey(otherId);
+                if (key) {
+                    content = await encryptMessage(text, key);
+                    type = 'encrypted';
+                }
+            } else if (chat.participants.length === 1 && chat.participants[0] === user.user_id) {
+                // Self chat
+                const key = await getSharedKey(user.user_id);
                 if (key) {
                     content = await encryptMessage(text, key);
                     type = 'encrypted';
