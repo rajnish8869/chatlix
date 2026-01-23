@@ -19,9 +19,11 @@ const REACTIONS = ["❤️", "😂", "😮", "😢", "😡", "👍"];
 
 const MessageContent = ({
   msg,
+  isMe,
   decryptFn,
 }: {
   msg: Message;
+  isMe: boolean;
   decryptFn: any;
 }) => {
   const [text, setText] = useState(
@@ -36,9 +38,30 @@ const MessageContent = ({
     }
   }, [msg, decryptFn]);
 
+  const content = React.useMemo(() => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.split(urlRegex).map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`underline break-all relative z-10 font-medium ${isMe ? 'text-white decoration-white/70' : 'text-blue-500 decoration-blue-500/30'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  }, [text, isMe]);
+
   return (
     <p className="text-[15px] leading-[1.5] break-words whitespace-pre-wrap">
-      {text}
+      {content}
     </p>
   );
 };
@@ -254,7 +277,7 @@ const MessageItem = React.memo(
                   }}
                 />
               ) : (
-                <MessageContent msg={msg} decryptFn={decryptFn} />
+                <MessageContent msg={msg} isMe={isMe} decryptFn={decryptFn} />
               )}
 
               <div
