@@ -1,5 +1,4 @@
 
-
 import React, { useEffect, useState, useRef } from "react";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
@@ -77,17 +76,8 @@ const ChatList: React.FC = () => {
   const [searchResults, setSearchResults] = useState<ListItem[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
-  const chats = React.useMemo(() => {
-    return allChats.filter(chat => {
-        if (chat.type === 'private') {
-            const otherId = chat.participants.find(p => p !== user?.user_id);
-            if (otherId && user?.blocked_users?.includes(otherId)) {
-                return false;
-            }
-        }
-        return true;
-    });
-  }, [allChats, user]);
+  // Use all chats directly without filtering blocked users
+  const chats = allChats;
 
   useEffect(() => {
     refreshChats();

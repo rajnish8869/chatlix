@@ -418,23 +418,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (messageUnsubs.current[chatId]) return;
 
     messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 50, (incomingMsgs) => {
-        // FILTERING: Remove messages from blocked users
-        const blocked = user?.blocked_users || [];
-        const filteredMsgs = incomingMsgs.filter(m => !blocked.includes(m.sender_id));
-
+        // No filtering of messages here anymore
         setMessages(prev => {
             const currentMsgs = prev[chatId] || [];
             const msgMap = new Map();
             currentMsgs.forEach(m => msgMap.set(m.message_id, m));
-            filteredMsgs.forEach(m => msgMap.set(m.message_id, m));
+            incomingMsgs.forEach(m => msgMap.set(m.message_id, m));
             
-            // Remove any messages that are now blocked (in case they were in state)
-            for (const [id, m] of msgMap.entries()) {
-                if (blocked.includes(m.sender_id)) {
-                    msgMap.delete(id);
-                }
-            }
-
             const merged = Array.from(msgMap.values()).sort((a: Message, b: Message) => 
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             );
@@ -455,9 +445,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
           const res = await chatService.fetchHistory(chatId, oldestMsg.timestamp);
           if (res.success && res.data && res.data.length > 0) {
-              // FILTERING: Remove blocked users from history
-              const blocked = user?.blocked_users || [];
-              const historyMsgs = res.data.filter(m => !blocked.includes(m.sender_id));
+              // No filtering of history messages here anymore
+              const historyMsgs = res.data;
 
               setMessages(prev => {
                   const current = prev[chatId] || [];
