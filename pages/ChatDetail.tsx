@@ -1,6 +1,5 @@
 
-
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
@@ -539,45 +538,6 @@ const ChatDetail: React.FC = () => {
       ? undefined 
       : (currentChat?.type === 'group' ? currentChat.group_image : otherUser?.profile_picture);
 
-  // --- WALLPAPER LOGIC ---
-  const wallpaperStyle = useMemo(() => {
-      if (!currentChat || !user) return {};
-      
-      let wp = null;
-
-      if (currentChat.type === 'group') {
-          if (currentChat.wallpaper_locked && currentChat.group_wallpaper) {
-              wp = currentChat.group_wallpaper;
-          } else {
-              if (currentChat.wallpapers?.[user.user_id]) {
-                  wp = currentChat.wallpapers[user.user_id];
-              } else if (currentChat.group_wallpaper) {
-                  wp = currentChat.group_wallpaper;
-              }
-          }
-      } else {
-          // Private
-          if (currentChat.wallpapers?.[user.user_id]) {
-              wp = currentChat.wallpapers[user.user_id];
-          }
-      }
-
-      if (!wp) return {}; // Default theme background
-
-      const isUrl = wp.startsWith('http') || wp.startsWith('data:');
-      if (isUrl) {
-          return { 
-              backgroundImage: `url(${wp})`, 
-              backgroundSize: 'cover', 
-              backgroundPosition: 'center',
-              backgroundAttachment: 'fixed'
-          };
-      } else {
-          // Hex/Color
-          return { backgroundColor: wp };
-      }
-  }, [currentChat, user]);
-
   useEffect(() => {
     const handleResize = () =>
       setViewportHeight(window.visualViewport?.height || window.innerHeight);
@@ -993,7 +953,7 @@ const ChatDetail: React.FC = () => {
   return (
     <div
       className="fixed inset-0 flex flex-col bg-background overflow-hidden"
-      style={{ height: `${viewportHeight}px`, ...wallpaperStyle }}
+      style={{ height: `${viewportHeight}px` }}
     >
       {isSelectionMode ? (
         <TopBar

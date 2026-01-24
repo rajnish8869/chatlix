@@ -1,6 +1,5 @@
 
 
-
 import { User, Chat, Message, AppSettings, ApiResponse, LogEvent } from '../types';
 import { 
     collection, 
@@ -396,31 +395,6 @@ export const chatService = {
       }
   },
 
-  updateWallpaper: async (chatId: string, userId: string, wallpaper: string | null, isGroup: boolean = false, isLocked: boolean = false) => {
-      try {
-          const updates: any = {};
-          if (isGroup) {
-             if (wallpaper === null) {
-                 updates.group_wallpaper = deleteField();
-             } else {
-                 updates.group_wallpaper = wallpaper;
-             }
-             updates.wallpaper_locked = isLocked;
-          } else {
-             // Personal wallpaper preference
-             if (wallpaper === null) {
-                 updates[`wallpapers.${userId}`] = deleteField();
-             } else {
-                 updates[`wallpapers.${userId}`] = wallpaper;
-             }
-          }
-          await updateDoc(doc(db, 'chats', chatId), updates);
-      } catch (e) {
-          console.error("Failed to update wallpaper", e);
-          throw e;
-      }
-  },
-
   // --- GROUP MANAGEMENT ---
 
   updateChatInfo: async (chatId: string, name?: string, image?: string) => {
@@ -530,11 +504,6 @@ export const chatService = {
 
   uploadImage: async (chatId: string, file: File): Promise<string> => {
       return compressImage(file, 800, 800, 0.5);
-  },
-  
-  uploadWallpaper: async (file: File): Promise<string> => {
-      // Wallpapers can be slightly higher quality
-      return compressImage(file, 1080, 1920, 0.7);
   },
 
   uploadAudio: async (chatId: string, blob: Blob): Promise<string> => {

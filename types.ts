@@ -27,11 +27,6 @@ export interface Chat {
   // E2EE for Groups
   key_issuer_id?: string; // The user who generated the group key
   encrypted_keys?: Record<string, string>; // Map of userID -> Encrypted Group Key (Base64)
-  
-  // Wallpapers
-  wallpapers?: Record<string, string>; // userId -> wallpaper string (url or hex)
-  group_wallpaper?: string; // URL or Hex for group shared wallpaper
-  wallpaper_locked?: boolean; // If true, group_wallpaper enforces for everyone
 }
 
 export interface Message {
