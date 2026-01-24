@@ -443,6 +443,7 @@ const ChatDetail: React.FC = () => {
   );
   const [showScrollFab, setShowScrollFab] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   // Audio Recording State
@@ -608,6 +609,12 @@ const ChatDetail: React.FC = () => {
     const val = e.target.value;
     setInputText(val);
 
+    // Auto-resize logic
+    if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+
     if (chatId) {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       setTyping(chatId, true);
@@ -634,6 +641,10 @@ const ChatDetail: React.FC = () => {
     }
 
     setInputText("");
+    if (textareaRef.current) {
+        textareaRef.current.style.height = '40px';
+    }
+    
     setReplyingTo(null);
     setReplyPreview("");
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -1127,12 +1138,13 @@ const ChatDetail: React.FC = () => {
                 )}
               </button>
               <textarea
+                ref={textareaRef}
                 value={inputText}
                 onChange={handleInputChange}
                 placeholder="Type a message..."
                 rows={1}
-                className="flex-1 bg-transparent text-text-main text-[15px] border-none focus:ring-0 resize-none min-h-[44px] max-h-[100px] py-2.5 px-1 placeholder:text-text-sub/40 font-medium"
-                style={{ height: "auto" }}
+                className="flex-1 bg-transparent text-text-main text-[15px] border-none focus:ring-0 resize-none min-h-[40px] max-h-[120px] py-[9px] px-2 placeholder:text-text-sub/40 font-medium leading-relaxed"
+                style={{ height: "40px" }}
               />
               
               {inputText.trim() || !isNative ? (
@@ -1141,7 +1153,7 @@ const ChatDetail: React.FC = () => {
                     disabled={!inputText.trim()}
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${inputText.trim() ? "bg-primary text-white shadow-glow scale-100" : "bg-surface-highlight text-text-sub opacity-50 cursor-not-allowed"}`}
                   >
-                    <Icons.Send className="w-5 h-5" />
+                    <Icons.Send className="w-5 h-5 ml-0.5" />
                   </button>
               ) : (
                   // Microphone Button
