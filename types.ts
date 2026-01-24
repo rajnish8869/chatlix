@@ -1,4 +1,5 @@
 
+
 export interface User {
   user_id: string; // Matches Firebase Auth UID
   username: string;
@@ -30,14 +31,14 @@ export interface Message {
   chat_id: string;
   sender_id: string;
   message: string;
-  type: 'text' | 'image' | 'system' | 'encrypted';
+  type: 'text' | 'image' | 'system' | 'encrypted' | 'audio';
   timestamp: string;
   status: 'sent' | 'delivered' | 'read' | 'pending' | 'failed';
   replyTo?: {
       message_id: string;
       sender_id: string;
       message: string; // Preview text
-      type: 'text' | 'image' | 'encrypted';
+      type: 'text' | 'image' | 'encrypted' | 'audio';
   };
   reactions?: Record<string, string>; // userId -> emoji
 }

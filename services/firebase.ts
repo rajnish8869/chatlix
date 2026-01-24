@@ -3,6 +3,7 @@ import * as firebaseApp from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
+import { getStorage } from "firebase/storage";
 
 // Workaround for TypeScript error "Module 'firebase/app' has no exported member..."
 // This can occur if type definitions are mismatched or in certain module resolution contexts.
@@ -36,7 +37,8 @@ const db = initializeFirestore(app, {
 });
 
 const rtdb = getDatabase(app);
+const storage = getStorage(app);
 
-console.log("[Firebase] Services initialized (Auth, Firestore, RTDB) with ForceLongPolling");
+console.log("[Firebase] Services initialized (Auth, Firestore, RTDB, Storage) with ForceLongPolling");
 
-export { app, auth, db, rtdb };
+export { app, auth, db, rtdb, storage };

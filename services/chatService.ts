@@ -1,4 +1,5 @@
 
+
 import { User, Chat, Message, AppSettings, ApiResponse, LogEvent } from '../types';
 import { 
     collection, 
@@ -23,14 +24,19 @@ import {
     updateProfile 
 } from 'firebase/auth';
 import { 
-    ref, 
+    ref as dbRef, 
     set, 
     onValue, 
     onDisconnect, 
     remove, 
     serverTimestamp 
 } from 'firebase/database';
-import { auth, db, rtdb } from './firebase';
+import { 
+    ref as storageRef, 
+    uploadBytes, 
+    getDownloadURL 
+} from 'firebase/storage';
+import { auth, db, rtdb, storage } from './firebase';
 
 // Helper to standardise responses
 const success = <T>(data?: T): ApiResponse<T> => ({ success: true, data });
@@ -199,7 +205,7 @@ export const chatService = {
   setUserOffline: async (userId: string) => {
       try {
           // Remove from RTDB
-          const statusRef = ref(rtdb, `status/${userId}`);
+          const statusRef = dbRef(rtdb, `status/${userId}`);
           await set(statusRef, {
               state: 'offline',
               last_changed: serverTimestamp(),
@@ -263,8 +269,8 @@ export const chatService = {
   // --- PRESENCE (RTDB) ---
 
   initializePresence: (userId: string) => {
-      const userStatusDatabaseRef = ref(rtdb, `status/${userId}`);
-      const connectedRef = ref(rtdb, '.info/connected');
+      const userStatusDatabaseRef = dbRef(rtdb, `status/${userId}`);
+      const connectedRef = dbRef(rtdb, '.info/connected');
 
       onValue(connectedRef, (snapshot) => {
           if (snapshot.val() === false) {
@@ -286,7 +292,7 @@ export const chatService = {
   },
 
   subscribeToGlobalPresence: (callback: (presenceMap: Record<string, any>) => void) => {
-      const allStatusRef = ref(rtdb, 'status');
+      const allStatusRef = dbRef(rtdb, 'status');
       return onValue(allStatusRef, (snapshot) => {
           if (snapshot.exists()) {
               callback(snapshot.val());
@@ -431,11 +437,24 @@ export const chatService = {
       return compressImage(file, 800, 800, 0.5);
   },
 
+  uploadAudio: async (chatId: string, blob: Blob): Promise<string> => {
+    try {
+        const filename = `audio_${Date.now()}.webm`;
+        const fileRef = storageRef(storage, `chat_media/${chatId}/${filename}`);
+        await uploadBytes(fileRef, blob);
+        const downloadURL = await getDownloadURL(fileRef);
+        return downloadURL;
+    } catch (e) {
+        console.error("Failed to upload audio", e);
+        throw e;
+    }
+  },
+
   sendMessage: async (
       chatId: string, 
       senderId: string, 
       content: string, 
-      type: 'text' | 'encrypted' | 'image' = 'text',
+      type: 'text' | 'encrypted' | 'image' | 'audio' = 'text',
       replyTo?: Message['replyTo'],
       customMessageId?: string
   ): Promise<ApiResponse<Message>> => {
@@ -633,7 +652,7 @@ export const chatService = {
   
   setTypingStatus: async (chatId: string, userId: string, isTyping: boolean) => {
       try {
-        const typingRef = ref(rtdb, `typing/${chatId}/${userId}`);
+        const typingRef = dbRef(rtdb, `typing/${chatId}/${userId}`);
         if (isTyping) {
             // Set timestamp and remove on disconnect
             await set(typingRef, serverTimestamp());
@@ -647,7 +666,7 @@ export const chatService = {
   },
 
   subscribeToChatTyping: (chatId: string, callback: (userIds: string[]) => void) => {
-      const chatTypingRef = ref(rtdb, `typing/${chatId}`);
+      const chatTypingRef = dbRef(rtdb, `typing/${chatId}`);
       return onValue(chatTypingRef, (snapshot) => {
           if (snapshot.exists()) {
               const data = snapshot.val();

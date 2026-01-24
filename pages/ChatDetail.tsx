@@ -1,4 +1,5 @@
 
+
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -16,6 +17,97 @@ import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { Message } from "../types";
 
 const REACTIONS = ["❤️", "😂", "😮", "😢", "😡", "👍"];
+
+const AudioPlayer = ({ src, isMe }: { src: string; isMe: boolean }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onTimeUpdate = () => {
+      setProgress((audio.currentTime / audio.duration) * 100);
+    };
+
+    const onLoadedMetadata = () => {
+      setDuration(audio.duration);
+    };
+
+    const onEnded = () => {
+      setIsPlaying(false);
+      setProgress(0);
+    };
+
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("ended", onEnded);
+
+    return () => {
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, []);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const formatTime = (seconds: number) => {
+    if (!seconds) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div className={`flex items-center gap-3 min-w-[200px] py-1`}>
+      <button
+        onClick={(e) => {
+            e.stopPropagation();
+            togglePlay();
+        }}
+        className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+          isMe ? "bg-white text-primary" : "bg-primary text-white"
+        }`}
+      >
+        {isPlaying ? (
+          <Icons.Pause className="w-5 h-5" />
+        ) : (
+          <Icons.Play className="w-5 h-5 ml-0.5" />
+        )}
+      </button>
+      <div className="flex-1 flex flex-col justify-center gap-1">
+        {/* Fake Waveform Visualizer */}
+        <div className="flex items-center gap-0.5 h-6">
+            {Array.from({ length: 20 }).map((_, i) => (
+                <div 
+                    key={i}
+                    className={`w-1 rounded-full transition-all duration-300 ${isMe ? "bg-white/50" : "bg-primary/30"}`}
+                    style={{
+                        height: isPlaying ? `${Math.max(20, Math.random() * 100)}%` : '30%',
+                        opacity: (i / 20) * 100 < progress ? 1 : 0.5
+                    }}
+                />
+            ))}
+        </div>
+        <div className={`text-[10px] font-mono ${isMe ? "text-white/80" : "text-text-sub"}`}>
+             {isPlaying ? formatTime(audioRef.current?.currentTime || 0) : formatTime(duration)}
+        </div>
+      </div>
+      <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
+    </div>
+  );
+};
 
 const MessageContent = ({
   msg,
@@ -216,7 +308,7 @@ const MessageItem = React.memo(
 
             <div
               className={`
-                relative max-w-[80%] shadow-sm active:scale-[0.98] transition-all flex flex-col
+                relative max-w-[85%] shadow-sm active:scale-[0.98] transition-all flex flex-col
                 ${
                   isMe
                     ? "bg-gradient-to-br from-primary to-primary/80 text-white rounded-[20px] rounded-tr-none shadow-primary/20"
@@ -245,6 +337,8 @@ const MessageItem = React.memo(
                   <span className="opacity-80 line-clamp-1 truncate">
                     {msg.replyTo.type === "image"
                       ? "📷 Photo"
+                      : msg.replyTo.type === "audio"
+                      ? "🎤 Voice Message"
                       : msg.replyTo.message}
                   </span>
                 </div>
@@ -261,6 +355,8 @@ const MessageItem = React.memo(
                     onImageClick(msg.message);
                   }}
                 />
+              ) : msg.type === "audio" ? (
+                  <AudioPlayer src={msg.message} isMe={isMe} />
               ) : (
                 <MessageContent msg={msg} isMe={isMe} decryptFn={decryptFn} />
               )}
@@ -329,6 +425,7 @@ const ChatDetail: React.FC = () => {
     loadMoreMessages,
     sendMessage,
     sendImage,
+    sendAudio,
     chats,
     markChatAsRead,
     contacts,
@@ -347,6 +444,15 @@ const ChatDetail: React.FC = () => {
   const [showScrollFab, setShowScrollFab] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Audio Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
+  const dragStartXRef = useRef<number | null>(null);
+  const [dragDistance, setDragDistance] = useState(0);
 
   // Scroll & Highlight State
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
@@ -471,6 +577,8 @@ const ChatDetail: React.FC = () => {
 
       if (replyingTo.type === "image") {
         if (isMounted) setReplyPreview("📷 Photo");
+      } else if (replyingTo.type === "audio") {
+        if (isMounted) setReplyPreview("🎤 Voice Message");
       } else if (replyingTo.type === "encrypted") {
         try {
           const text = await decryptContent(
@@ -543,6 +651,114 @@ const ChatDetail: React.FC = () => {
     }
   };
 
+  // --- Audio Recording Handlers ---
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+      setDragDistance(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+
+    } catch (err: any) {
+      console.error("Error accessing microphone:", err);
+      let errorMessage = "Microphone access error.";
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMessage = "Microphone permission denied. Please enable it in your settings.";
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorMessage = "No microphone found.";
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          errorMessage = "Microphone is already in use.";
+      }
+      alert(errorMessage);
+    }
+  };
+
+  const stopRecording = (shouldSend: boolean) => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.onstop = async () => {
+        if (shouldSend && chatId) {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          if (audioBlob.size > 0) {
+              virtuosoRef.current?.scrollTo({ top: 10000000, behavior: "smooth" });
+              await sendAudio(chatId, audioBlob);
+          }
+        }
+        
+        // Cleanup
+        const tracks = mediaRecorderRef.current?.stream.getTracks();
+        tracks?.forEach(track => track.stop());
+      };
+      
+      mediaRecorderRef.current.stop();
+    }
+
+    setIsRecording(false);
+    setDragDistance(0);
+    clearInterval(recordingTimerRef.current);
+  };
+
+  // Gesture Handlers for Slide-to-Cancel
+  const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+     if ('touches' in e) {
+         dragStartXRef.current = e.touches[0].clientX;
+     } else {
+         dragStartXRef.current = e.clientX;
+     }
+     startRecording();
+  };
+
+  const handleTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
+      if (!isRecording || dragStartXRef.current === null) return;
+      
+      let currentX;
+      if ('touches' in e) {
+          currentX = e.touches[0].clientX;
+      } else {
+          currentX = e.clientX;
+      }
+
+      const diff = dragStartXRef.current - currentX;
+      if (diff > 0) {
+          setDragDistance(diff);
+      }
+
+      // If dragged far enough, cancel
+      if (diff > 150) {
+          stopRecording(false); // Cancel
+          dragStartXRef.current = null;
+      }
+  };
+
+  const handleTouchEnd = () => {
+      if (isRecording) {
+          stopRecording(true); // Send
+      }
+      dragStartXRef.current = null;
+  };
+
+  const formatDuration = (sec: number) => {
+    const min = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${min}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // ------------------------------
+
   const getChatName = () => {
     if (currentChat?.type === "group" && currentChat.name)
       return currentChat.name;
@@ -605,6 +821,10 @@ const ChatDetail: React.FC = () => {
             console.error("Failed to decrypt for copy", e);
             textToCopy = "Decryption failed";
           }
+        } else if (activeMessage.type === "image") {
+            textToCopy = "[Image]";
+        } else if (activeMessage.type === "audio") {
+            textToCopy = "[Audio Message]";
         }
         navigator.clipboard.writeText(textToCopy);
         break;
@@ -834,41 +1054,75 @@ const ChatDetail: React.FC = () => {
         )}
 
         <div
-          className={`flex items-end gap-2 max-w-5xl mx-auto bg-surface/70 backdrop-blur-xl p-2 border border-white/10 shadow-lg mb-[env(safe-area-inset-bottom)] transition-all ${replyingTo ? "rounded-b-[24px] rounded-t-none border-t-0" : "rounded-[24px]"}`}
+          className={`relative max-w-5xl mx-auto bg-surface/70 backdrop-blur-xl border border-white/10 shadow-lg mb-[env(safe-area-inset-bottom)] transition-all overflow-hidden ${replyingTo ? "rounded-b-[24px] rounded-t-none border-t-0" : "rounded-[24px]"}`}
         >
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            accept="image/*"
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-text-sub hover:bg-primary/20 hover:text-primary transition-colors disabled:opacity-50 flex-shrink-0"
-          >
-            {isUploading ? (
-              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Icons.PaperClip className="w-5 h-5" />
-            )}
-          </button>
-          <textarea
-            value={inputText}
-            onChange={handleInputChange}
-            placeholder="Type a message..."
-            rows={1}
-            className="flex-1 bg-transparent text-text-main text-[15px] border-none focus:ring-0 resize-none min-h-[44px] max-h-[100px] py-2.5 px-1 placeholder:text-text-sub/40 font-medium"
-            style={{ height: "auto" }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!inputText.trim()}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${inputText.trim() ? "bg-primary text-white shadow-glow scale-100" : "bg-surface-highlight text-text-sub opacity-40"}`}
-          >
-            <Icons.Send className="w-5 h-5" />
-          </button>
+          {/* Audio Recording Overlay */}
+          {isRecording && (
+              <div className="absolute inset-0 z-30 bg-surface flex items-center justify-between px-4 animate-fade-in">
+                  <div className="flex items-center gap-2 text-danger animate-pulse">
+                       <div className="w-2.5 h-2.5 rounded-full bg-danger" />
+                       <span className="font-mono font-bold text-sm">{formatDuration(recordingDuration)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-text-sub text-xs font-bold uppercase tracking-wide opacity-80">
+                      <Icons.Trash className="w-4 h-4" />
+                      <span>Slide to Cancel</span>
+                  </div>
+              </div>
+          )}
+
+          <div className={`flex items-end gap-2 p-2 ${isRecording ? 'opacity-0' : 'opacity-100'}`}>
+             <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                accept="image/*"
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-text-sub hover:bg-primary/20 hover:text-primary transition-colors disabled:opacity-50 flex-shrink-0"
+              >
+                {isUploading ? (
+                  <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Icons.PaperClip className="w-5 h-5" />
+                )}
+              </button>
+              <textarea
+                value={inputText}
+                onChange={handleInputChange}
+                placeholder="Type a message..."
+                rows={1}
+                className="flex-1 bg-transparent text-text-main text-[15px] border-none focus:ring-0 resize-none min-h-[44px] max-h-[100px] py-2.5 px-1 placeholder:text-text-sub/40 font-medium"
+                style={{ height: "auto" }}
+              />
+              
+              {inputText.trim() ? (
+                  <button
+                    onClick={handleSend}
+                    className="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 bg-primary text-white shadow-glow scale-100"
+                  >
+                    <Icons.Send className="w-5 h-5" />
+                  </button>
+              ) : (
+                  // Microphone Button
+                  <div 
+                    className="relative"
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onMouseDown={handleTouchStart} // For desktop testing
+                    onMouseUp={handleTouchEnd}     // For desktop testing
+                    onMouseMove={handleTouchMove}  // For desktop testing
+                    onMouseLeave={handleTouchEnd}
+                  >
+                      <button className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 ${isRecording ? "bg-danger scale-125 shadow-lg shadow-danger/40 text-white" : "bg-surface-highlight text-text-sub hover:bg-primary/10 hover:text-primary"}`}>
+                        <Icons.Mic className="w-5 h-5" />
+                      </button>
+                  </div>
+              )}
+          </div>
         </div>
       </div>
 

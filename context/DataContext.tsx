@@ -1,4 +1,5 @@
 
+
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Chat, Message, AppSettings, User, ApiResponse } from '../types';
 import { useAuth } from './AuthContext';
@@ -24,7 +25,7 @@ interface QueueItem {
     chatId: string;
     senderId: string;
     content: string;
-    type: 'text' | 'encrypted' | 'image';
+    type: 'text' | 'encrypted' | 'image' | 'audio';
     replyTo?: Message['replyTo'];
     timestamp: number;
 }
@@ -42,6 +43,7 @@ interface DataContextType {
   loadMoreMessages: (chatId: string) => Promise<void>;
   sendMessage: (chatId: string, text: string, replyTo?: Message['replyTo']) => Promise<void>;
   sendImage: (chatId: string, file: File) => Promise<void>;
+  sendAudio: (chatId: string, blob: Blob) => Promise<void>;
   toggleReaction: (chatId: string, messageId: string, reaction: string) => Promise<void>;
   setTyping: (chatId: string, isTyping: boolean) => Promise<void>;
   createChat: (participants: string[], groupName?: string) => Promise<string | null>;
@@ -596,6 +598,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Failed to send image", e);
       }
   };
+
+  const sendAudio = async (chatId: string, blob: Blob) => {
+    if (!user) return;
+    try {
+        const downloadUrl = await chatService.uploadAudio(chatId, blob);
+        await chatService.sendMessage(chatId, user.user_id, downloadUrl, 'audio');
+    } catch (e) {
+        console.error("Failed to send audio", e);
+        // In a real app, show error toast
+    }
+  };
   
   const toggleReaction = async (chatId: string, messageId: string, reaction: string) => {
       if (!user) return;
@@ -630,7 +643,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <DataContext.Provider value={{ 
         chats, messages, settings, syncing, isOffline, contacts, typingStatus,
-        refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, retryFailedMessages, 
+        refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, sendAudio, retryFailedMessages, 
         createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
         deleteChats, deleteMessages, getMessage
     }}>
