@@ -257,6 +257,7 @@ const MessageItem = React.memo(
     onReply,
     onScrollTo,
     isHighlighted,
+    isBlocked,
   }: {
     msg: Message;
     isMe: boolean;
@@ -270,6 +271,7 @@ const MessageItem = React.memo(
     onReply: (msg: Message) => void;
     onScrollTo: (id: string) => void;
     isHighlighted: boolean;
+    isBlocked?: boolean;
   }) => {
     const touchTimer = useRef<any>(undefined);
 
@@ -318,7 +320,7 @@ const MessageItem = React.memo(
             onMouseLeave={handleTouchEnd}
             onClick={() => onClick(msg)}
           >
-            {senderName && (
+            {senderName && !isBlocked && (
               <span className="text-[11px] font-bold mb-1.5 ml-3 text-primary opacity-90">
                 {senderName}
               </span>
@@ -328,9 +330,11 @@ const MessageItem = React.memo(
               className={`
                 relative max-w-[85%] shadow-sm active:scale-[0.98] transition-all flex flex-col
                 ${
-                  isMe
-                    ? "bg-gradient-to-br from-primary to-primary/80 text-white rounded-[20px] rounded-tr-none shadow-primary/20"
-                    : "bg-surface text-text-main rounded-[20px] rounded-tl-none border border-white/10"
+                  isBlocked 
+                    ? "bg-surface/30 border border-white/5 text-text-sub opacity-80 rounded-[20px] rounded-tl-none" 
+                    : isMe
+                        ? "bg-gradient-to-br from-primary to-primary/80 text-white rounded-[20px] rounded-tr-none shadow-primary/20"
+                        : "bg-surface text-text-main rounded-[20px] rounded-tl-none border border-white/10"
                 } 
                 ${msg.status === "failed" ? "border-2 border-danger" : ""}
                 ${msg.type === "image" ? "p-1" : "px-4 py-3"} 
@@ -338,6 +342,15 @@ const MessageItem = React.memo(
                 ${isHighlighted ? "ring-2 ring-primary shadow-[0_0_30px_rgba(var(--primary-color),0.4)]" : ""}
             `}
             >
+              {isBlocked && (
+                  <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-white/5 w-full">
+                      <Icons.Lock className="w-3 h-3 text-text-sub opacity-50" />
+                      <span className="text-[9px] font-bold text-text-sub opacity-50 uppercase tracking-widest leading-none">
+                          Message from a blocked user
+                      </span>
+                  </div>
+              )}
+
               {msg.replyTo && (
                 <div
                   onClick={(e) => {
@@ -1042,9 +1055,9 @@ const ChatDetail: React.FC = () => {
               (!prevMsg ||
                 String(prevMsg.sender_id) !== String(msg.sender_id) ||
                 showDate);
-            const senderName = showName
-              ? getSenderName(msg.sender_id)
-              : undefined;
+            
+            const isBlocked = user?.blocked_users?.includes(msg.sender_id);
+            const senderName = isBlocked ? undefined : (showName ? getSenderName(msg.sender_id) : undefined);
 
             return (
               <MessageItem
@@ -1060,6 +1073,7 @@ const ChatDetail: React.FC = () => {
                 onReply={setReplyingTo}
                 onScrollTo={scrollToMessage}
                 isHighlighted={highlightedMsgId === msg.message_id}
+                isBlocked={isBlocked}
               />
             );
           }}
@@ -1104,7 +1118,7 @@ const ChatDetail: React.FC = () => {
                 <div className="max-w-5xl mx-auto bg-gradient-to-r from-surface/90 to-surface/70 backdrop-blur-lg border border-primary/20 rounded-t-3xl p-3 flex items-center justify-between mb-[-8px] pb-5 shadow-lg animate-slide-up">
                     <div className="flex flex-col border-l-4 border-primary pl-3 flex-1 min-w-0">
                     <span className="text-primary font-bold text-[11px] mb-0.5">
-                        Replying to {getSenderName(replyingTo.sender_id)}
+                        Replying to {user?.blocked_users?.includes(replyingTo.sender_id) ? "Blocked User" : getSenderName(replyingTo.sender_id)}
                     </span>
                     <span className="text-text-sub text-sm truncate">
                         {replyPreview}
