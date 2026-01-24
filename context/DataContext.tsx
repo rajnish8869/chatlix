@@ -54,6 +54,9 @@ interface DataContextType {
   deleteChats: (chatIds: string[]) => Promise<void>;
   deleteMessages: (chatId: string, messageIds: string[]) => Promise<void>;
   getMessage: (chatId: string, messageId: string) => Promise<ApiResponse<Message>>;
+  updateGroupInfo: (chatId: string, name?: string, imageFile?: File) => Promise<void>;
+  addGroupMember: (chatId: string, newUserId: string) => Promise<void>;
+  removeGroupMember: (chatId: string, userIdToRemove: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -224,6 +227,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncing(false);
 
         newChats.forEach(chat => {
+            // Check if key_issuer_id changed (rotation happened), invalidate cache
+            if (chat.type === 'group' && chat.key_issuer_id) {
+                 // Simple logic: if we have a key cached but the encrypted key payload for me changed, we need to re-decrypt
+                 // Ideally we'd compare versions, but comparing the encrypted string works
+                 const myEncKey = chat.encrypted_keys?.[user.user_id];
+                 // If we have a cached key, but the encrypted blob changed?
+                 // For now, rely on `decryptContent` logic to handle fetching
+            }
+
             if (chat.last_message && 
                 chat.last_message.sender_id !== user.user_id && 
                 chat.last_message.status === 'sent') {
@@ -327,8 +339,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // If no E2EE setup for this group (legacy), return raw
           if (!chat.encrypted_keys || !chat.key_issuer_id) return content;
 
+          // Check if we need to rotate/reload the key (e.g. issuer changed or my key changed)
+          // For simplicity, we assume if we fail to decrypt with cached key, we retry fetching
           if (groupKeysCache.current[chatId]) {
-              return await decryptMessage(content, groupKeysCache.current[chatId]);
+              try {
+                 return await decryptMessage(content, groupKeysCache.current[chatId]);
+              } catch (e) {
+                 // If decryption failed, maybe key rotated? Fallthrough to re-fetch
+                 groupKeysCache.current[chatId] = undefined as any;
+              }
           }
 
           const myEncryptedKey = chat.encrypted_keys[user?.user_id || ''];
@@ -354,19 +373,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } 
       
       // --- PRIVATE CHAT DECRYPTION ---
-      // For private chats, we need the shared secret between Me and the Other person.
-      // If I sent it, I encrypted it with Shared(Me, Other).
-      // If Other sent it, they encrypted it with Shared(Other, Me).
-      // These shared secrets are mathematically identical.
-      
       const otherId = chat.participants.find(p => p !== user?.user_id);
       
-      // Case: Chat with someone else
       if (otherId) {
           const key = await getSharedKey(otherId);
           if (key) return await decryptMessage(content, key);
       } 
-      // Case: Chat with self (Note to Self) or fallback
       else if (chat.participants.includes(user?.user_id || '')) {
           const key = await getSharedKey(user?.user_id || '');
           if (key) return await decryptMessage(content, key);
@@ -398,27 +410,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error("Cannot create encrypted group: Missing private key");
             return null;
         }
-
-        // We need public keys for all participants.
         
         for (const pId of allParticipants) {
              let pUser = contacts.find(c => c.user_id === pId);
              if (pId === user.user_id) pUser = user;
              
              if (!pUser && pId !== user.user_id) {
-                 // Fetch missing user public key
                  const docRef = doc(db, 'users', pId);
                  const snap = await getDoc(docRef);
                  if (snap.exists()) pUser = snap.data() as User;
              }
 
              if (pUser?.publicKey) {
-                 // Derive shared secret
                  const shared = await deriveSharedKey(myPrivKeyStr, pUser.publicKey);
                  const encryptedKey = await encryptMessage(groupKeyStr, shared);
                  encryptedKeysPayload[pId] = encryptedKey;
-             } else {
-                 console.warn(`Skipping encryption for ${pId}: No public key`);
              }
         }
     }
@@ -430,26 +436,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadMessages = useCallback(async (chatId: string) => {
     if (messageUnsubs.current[chatId]) return;
 
-    // Listen to the latest 50 messages in real-time
     messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 50, (incomingMsgs) => {
         setMessages(prev => {
             const currentMsgs = prev[chatId] || [];
-            
-            // Merge logic: Create a map to deduplicate by ID
-            // We prioritize the incoming (real-time/updated) data
             const msgMap = new Map();
-            
-            // Populate with existing messages first
             currentMsgs.forEach(m => msgMap.set(m.message_id, m));
-            
-            // Overwrite/Add with new messages
             incomingMsgs.forEach(m => msgMap.set(m.message_id, m));
-            
-            // Convert back to array and sort chronologically
             const merged = Array.from(msgMap.values()).sort((a: Message, b: Message) => 
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             );
-
             return { ...prev, [chatId]: merged };
         });
     }) as UnsubscribeFunc;
@@ -462,7 +457,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!currentMsgs || currentMsgs.length === 0) return;
 
       const oldestMsg = currentMsgs[0];
-      
       setLoadingHistory(prev => ({ ...prev, [chatId]: true }));
       
       try {
@@ -472,16 +466,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setMessages(prev => {
                   const current = prev[chatId] || [];
                   const msgMap = new Map();
-                  
-                  // Add history first
                   historyMsgs.forEach(m => msgMap.set(m.message_id, m));
-                  // Add/Overwrite with current (which contains latest status updates)
                   current.forEach(m => msgMap.set(m.message_id, m));
-                  
                   const merged = Array.from(msgMap.values()).sort((a: Message, b: Message) => 
                     new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
                   );
-
                   return { ...prev, [chatId]: merged };
               });
           }
@@ -523,6 +512,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
         } else if (chat.type === 'group' && chat.encrypted_keys) {
+            // Ensure we have the group key loaded
             if (!groupKeysCache.current[chatId]) {
                  await decryptContent(chatId, "WARMUP", user.user_id);
             }
@@ -531,6 +521,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (groupKey) {
                 content = await encryptMessage(text, groupKey);
                 type = 'encrypted';
+            } else {
+                console.error("Cannot send message: Group key unavailable");
+                return;
             }
         }
     }
@@ -550,16 +543,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         replyTo: replyTo
     };
 
-    // 2. Update UI Immediately
     setMessages(prev => {
         const current = prev[chatId] || [];
-        return {
-            ...prev,
-            [chatId]: [...current, optimisticMsg]
-        };
+        return { ...prev, [chatId]: [...current, optimisticMsg] };
     });
 
-    // 3. Queue Logic
     const addToQueue = () => {
         const queueItem: QueueItem = {
             id: tempId,
@@ -578,11 +566,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
     }
 
-    // 4. Try Network
     try {
         await chatService.sendMessage(chatId, user.user_id, content, type, replyTo, tempId);
-        // On success, Firestore subscription will update status to 'sent' automatically
-        // because we used the same `tempId` for the document ID.
     } catch (e) {
         console.error("SendMessage failed, adding to queue", e);
         addToQueue();
@@ -606,7 +591,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await chatService.sendMessage(chatId, user.user_id, downloadUrl, 'audio');
     } catch (e) {
         console.error("Failed to send audio", e);
-        // In a real app, show error toast
     }
   };
   
@@ -634,18 +618,100 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await chatService.deleteMessages(chatId, messageIds);
   };
 
-  const retryFailedMessages = () => {
-      processQueue();
-  };
+  const retryFailedMessages = () => processQueue();
   
   const refreshChats = async () => {};
+
+  // --- GROUP MANAGEMENT ---
+
+  const updateGroupInfo = async (chatId: string, name?: string, imageFile?: File) => {
+      let imageUrl = undefined;
+      if (imageFile) {
+          imageUrl = await chatService.uploadImage(chatId, imageFile);
+      }
+      await chatService.updateChatInfo(chatId, name, imageUrl);
+  };
+
+  const addGroupMember = async (chatId: string, newUserId: string) => {
+      if (!user) return;
+      const chat = chats.find(c => c.chat_id === chatId);
+      if (!chat || chat.type !== 'group' || !chat.encrypted_keys) return;
+
+      // 1. Decrypt current Group Key
+      if (!groupKeysCache.current[chatId]) {
+          await decryptContent(chatId, "WARMUP", user.user_id);
+      }
+      const groupKey = groupKeysCache.current[chatId];
+      if (!groupKey) throw new Error("Could not decrypt group key to share");
+      
+      const groupKeyStr = await exportKeyToString(groupKey);
+
+      // 2. Fetch new user's Public Key
+      const userDocRef = doc(db, 'users', newUserId);
+      const userSnap = await getDoc(userDocRef);
+      if (!userSnap.exists()) throw new Error("User not found");
+      const newUser = userSnap.data() as User;
+      if (!newUser.publicKey) throw new Error("User has no keys setup");
+
+      // 3. Encrypt Group Key for New User (using Shared Secret)
+      const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user.user_id}`);
+      if (!myPrivKeyStr) throw new Error("Private Key Missing");
+      
+      const sharedSecret = await deriveSharedKey(myPrivKeyStr, newUser.publicKey);
+      const newEncryptedKey = await encryptMessage(groupKeyStr, sharedSecret);
+
+      // 4. Update Database
+      await chatService.addGroupParticipant(chatId, newUserId, newEncryptedKey);
+  };
+
+  const removeGroupMember = async (chatId: string, userIdToRemove: string) => {
+      if (!user) return;
+      const chat = chats.find(c => c.chat_id === chatId);
+      if (!chat || chat.type !== 'group') return;
+
+      // 1. Generate NEW Group Key (Rotation)
+      const newGroupKey = await generateSymmetricKey();
+      const newGroupKeyStr = await exportKeyToString(newGroupKey);
+
+      const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user.user_id}`);
+      if (!myPrivKeyStr) throw new Error("Private Key Missing");
+
+      const remainingParticipants = chat.participants.filter(p => p !== userIdToRemove);
+      const newEncryptedKeys: Record<string, string> = {};
+
+      // 2. Encrypt NEW Group Key for ALL remaining participants (including Self)
+      for (const pId of remainingParticipants) {
+           let pUser = contacts.find(c => c.user_id === pId);
+           if (pId === user.user_id) pUser = user;
+
+           // Fallback fetch if not in contacts
+           if (!pUser && pId !== user.user_id) {
+               const docRef = doc(db, 'users', pId);
+               const snap = await getDoc(docRef);
+               if (snap.exists()) pUser = snap.data() as User;
+           }
+
+           if (pUser?.publicKey) {
+               const shared = await deriveSharedKey(myPrivKeyStr, pUser.publicKey);
+               const encryptedKey = await encryptMessage(newGroupKeyStr, shared);
+               newEncryptedKeys[pId] = encryptedKey;
+           }
+      }
+
+      // 3. Update DB (Atomic Remove + Key Rotation)
+      await chatService.removeGroupParticipant(chatId, userIdToRemove, user.user_id, newEncryptedKeys);
+
+      // 4. Update Local Cache Immediately
+      groupKeysCache.current[chatId] = newGroupKey;
+  };
 
   return (
     <DataContext.Provider value={{ 
         chats, messages, settings, syncing, isOffline, contacts, typingStatus,
         refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, sendAudio, retryFailedMessages, 
         createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
-        deleteChats, deleteMessages, getMessage
+        deleteChats, deleteMessages, getMessage,
+        updateGroupInfo, addGroupMember, removeGroupMember
     }}>
       {children}
     </DataContext.Provider>

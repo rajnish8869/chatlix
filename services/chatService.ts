@@ -15,6 +15,7 @@ import {
     onSnapshot,
     writeBatch,
     arrayRemove,
+    arrayUnion,
     orderBy,
     deleteField
 } from 'firebase/firestore';
@@ -297,7 +298,7 @@ export const chatService = {
       });
   },
 
-  // --- CHATS ---
+  // --- CHATS & GROUPS ---
 
   createChat: async (
       userId: string, 
@@ -331,9 +332,12 @@ export const chatService = {
       };
 
       // Add E2EE payload for groups
-      if (isGroup && encryptedKeys) {
-          newChatData.key_issuer_id = userId;
-          newChatData.encrypted_keys = encryptedKeys;
+      if (isGroup) {
+          newChatData.admins = [userId]; // Creator is admin
+          if (encryptedKeys) {
+             newChatData.key_issuer_id = userId;
+             newChatData.encrypted_keys = encryptedKeys;
+          }
       }
 
       const docRef = await addDoc(collection(db, 'chats'), newChatData);
@@ -363,12 +367,65 @@ export const chatService = {
           chatIds.forEach(id => {
               const ref = doc(db, 'chats', id);
               batch.update(ref, {
-                  participants: arrayRemove(userId)
+                  participants: arrayRemove(userId),
+                  admins: arrayRemove(userId)
               });
           });
           await batch.commit();
       } catch (e) {
           console.error("Failed to delete chats", e);
+      }
+  },
+
+  // --- GROUP MANAGEMENT ---
+
+  updateChatInfo: async (chatId: string, name?: string, image?: string) => {
+      try {
+          const data: any = { updated_at: new Date().toISOString() };
+          if (name) data.name = name;
+          if (image) data.group_image = image;
+          await updateDoc(doc(db, 'chats', chatId), data);
+      } catch (e) {
+          console.error("Failed to update chat info", e);
+          throw e;
+      }
+  },
+
+  addGroupParticipant: async (
+      chatId: string, 
+      newUserId: string, 
+      newEncryptedKey: string
+  ) => {
+      try {
+          await updateDoc(doc(db, 'chats', chatId), {
+              participants: arrayUnion(newUserId),
+              [`encrypted_keys.${newUserId}`]: newEncryptedKey,
+              updated_at: new Date().toISOString()
+          });
+      } catch (e) {
+          console.error("Failed to add participant", e);
+          throw e;
+      }
+  },
+
+  // Key Rotation on removal
+  removeGroupParticipant: async (
+      chatId: string, 
+      userIdToRemove: string, 
+      newKeyIssuerId: string, 
+      newEncryptedKeys: Record<string, string>
+  ) => {
+      try {
+          await updateDoc(doc(db, 'chats', chatId), {
+              participants: arrayRemove(userIdToRemove),
+              admins: arrayRemove(userIdToRemove),
+              key_issuer_id: newKeyIssuerId,
+              encrypted_keys: newEncryptedKeys, // Full replacement for rotation
+              updated_at: new Date().toISOString()
+          });
+      } catch (e) {
+          console.error("Failed to remove participant", e);
+          throw e;
       }
   },
 

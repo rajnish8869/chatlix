@@ -1,5 +1,4 @@
 
-
 export interface User {
   user_id: string; // Matches Firebase Auth UID
   username: string;
@@ -17,10 +16,12 @@ export interface Chat {
   chat_id: string; // Firestore Doc ID
   type: 'private' | 'group';
   participants: string[]; 
+  admins?: string[]; // Array of User IDs who are admins
   created_at: string;
   updated_at?: string; 
   last_message?: Message; 
   name?: string;
+  group_image?: string; // Base64 or URL for group avatar
   // E2EE for Groups
   key_issuer_id?: string; // The user who generated the group key
   encrypted_keys?: Record<string, string>; // Map of userID -> Encrypted Group Key (Base64)
