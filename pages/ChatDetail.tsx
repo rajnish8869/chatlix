@@ -971,10 +971,9 @@ const ChatDetail: React.FC = () => {
                 name={getChatName()}
                 src={chatImage} // Masked if blocked
                 size="sm"
-                online={
-                  currentChat?.type === "private" ? isOtherOnline : undefined
-                }
-                showStatus={currentChat?.type === "private" && !theyBlockedMe}
+                online={currentChat?.type === "private" ? isOtherOnline : undefined}
+                blocked={iBlockedThem}
+                showStatus={currentChat?.type === "private" && !iBlockedThem && !theyBlockedMe}
               />
               <div className="flex flex-col min-w-0">
                 <span className="text-[15px] font-bold truncate">
@@ -985,7 +984,7 @@ const ChatDetail: React.FC = () => {
                     {typingText}
                   </span>
                 ) : (
-                  currentChat?.type === "private" && !theyBlockedMe && (
+                  currentChat?.type === "private" && !theyBlockedMe && !iBlockedThem && (
                     <span
                       className={`text-[10px] font-semibold flex items-center gap-1 leading-none ${isOtherOnline ? "text-emerald-500" : "text-text-sub opacity-60"}`}
                     >

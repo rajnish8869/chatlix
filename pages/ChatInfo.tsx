@@ -212,7 +212,9 @@ const ChatInfo: React.FC = () => {
                     src={displayProfilePic}
                     size="xl"
                     className="shadow-2xl shadow-primary/30"
-                    showStatus={false}
+                    showStatus={!isGroup && !theyBlockedMe}
+                    online={(!isGroup && !theyBlockedMe && !iBlockedThem) ? (otherPerson?.status === 'online') : undefined}
+                    blocked={iBlockedThem}
                 />
                 {isGroup && isAdmin && (
                     <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -280,53 +282,60 @@ const ChatInfo: React.FC = () => {
               </div>
               
               <div className="bg-surface rounded-[28px] border border-white/10 overflow-hidden shadow-md">
-                {participants.map((p, idx) => (
-                <div
-                    key={p.user_id}
-                    className={`flex items-center gap-3.5 p-5 ${idx !== participants.length - 1 ? "border-b border-white/5" : ""} hover:bg-surface-highlight/20 transition-colors group`}
-                >
-                    <Avatar
-                        name={p.username}
-                        src={(!isGroup && theyBlockedMe) ? undefined : p.profile_picture}
-                        size="md"
-                        online={(!isGroup && theyBlockedMe) ? false : p.status === "online"}
-                    />
-                    <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                        <h4 className="font-bold text-text-main truncate">
-                        {p.username}
-                        </h4>
-                        {p.isMe && (
-                        <span className="text-[10px] bg-primary/20 text-primary px-2.5 py-0.5 rounded-full font-bold flex-shrink-0">
-                            YOU
-                        </span>
-                        )}
-                        {currentChat.admins?.includes(p.user_id) && (
-                            <span className="text-[10px] bg-amber-500/20 text-amber-500 px-2.5 py-0.5 rounded-full font-bold flex-shrink-0">
-                                ADMIN
+                {participants.map((p, idx) => {
+                  const isBlocked = user?.blocked_users?.includes(p.user_id);
+                  const isOnline = p.status === 'online';
+                  
+                  return (
+                    <div
+                        key={p.user_id}
+                        className={`flex items-center gap-3.5 p-5 ${idx !== participants.length - 1 ? "border-b border-white/5" : ""} hover:bg-surface-highlight/20 transition-colors group`}
+                    >
+                        <Avatar
+                            name={p.username}
+                            src={(!isGroup && theyBlockedMe) ? undefined : p.profile_picture}
+                            size="md"
+                            online={(!isGroup && theyBlockedMe) ? undefined : isOnline}
+                            blocked={isBlocked}
+                            showStatus={!theyBlockedMe}
+                        />
+                        <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                            <h4 className="font-bold text-text-main truncate">
+                            {p.username}
+                            </h4>
+                            {p.isMe && (
+                            <span className="text-[10px] bg-primary/20 text-primary px-2.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                                YOU
                             </span>
-                        )}
-                        {!isGroup && iBlockedThem && (
-                            <span className="text-[10px] bg-danger/20 text-danger px-2.5 py-0.5 rounded-full font-bold flex-shrink-0">
-                                BLOCKED
-                            </span>
+                            )}
+                            {currentChat.admins?.includes(p.user_id) && (
+                                <span className="text-[10px] bg-amber-500/20 text-amber-500 px-2.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                                    ADMIN
+                                </span>
+                            )}
+                            {isBlocked && (
+                                <span className="text-[10px] bg-danger/20 text-danger px-2.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                                    BLOCKED
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-sm text-text-sub opacity-70 truncate">
+                            {(!isGroup && theyBlockedMe) ? "" : p.status}
+                        </p>
+                        </div>
+                        
+                        {isGroup && isAdmin && !p.isMe && (
+                            <button 
+                                onClick={() => promptRemoveMember(p)}
+                                className="p-2 text-danger hover:bg-danger/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <Icons.Trash className="w-5 h-5" />
+                            </button>
                         )}
                     </div>
-                    <p className="text-sm text-text-sub opacity-70 truncate">
-                        {(!isGroup && theyBlockedMe) ? "" : p.status}
-                    </p>
-                    </div>
-                    
-                    {isGroup && isAdmin && !p.isMe && (
-                        <button 
-                            onClick={() => promptRemoveMember(p)}
-                            className="p-2 text-danger hover:bg-danger/10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                            <Icons.Trash className="w-5 h-5" />
-                        </button>
-                    )}
-                </div>
-                ))}
+                  );
+                })}
               </div>
           </div>
 

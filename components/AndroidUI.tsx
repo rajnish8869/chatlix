@@ -1,5 +1,4 @@
 
-
 import React, { useEffect, useState } from "react";
 // @ts-ignore
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -305,10 +304,11 @@ export const Avatar: React.FC<{
   name: string;
   src?: string;
   size?: "sm" | "md" | "lg" | "xl";
-  online?: boolean;
+  online?: boolean; // undefined = hide status, true = online, false = offline
+  blocked?: boolean; // true = blocked (overrides online status)
   className?: string;
-  showStatus?: boolean;
-}> = ({ name, src, size = "md", online, className, showStatus = true }) => {
+  showStatus?: boolean; // Toggles whether to show any status dot at all
+}> = ({ name, src, size = "md", online, blocked, className, showStatus = true }) => {
   const sizeClasses = {
     sm: "w-9 h-9 text-xs",
     md: "w-12 h-12 text-base",
@@ -329,6 +329,22 @@ export const Avatar: React.FC<{
     .split("")
     .reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const gradient = gradients[hash % gradients.length];
+  
+  // Status Dot Logic
+  // Priority: Blocked > Online > Offline
+  let statusColor = "";
+  let shouldShowDot = false;
+
+  if (showStatus && (online !== undefined || blocked)) {
+      shouldShowDot = true;
+      if (blocked) {
+          statusColor = "bg-black border-white/20"; // Black dot for blocked
+      } else if (online) {
+          statusColor = "bg-green-500 border-surface"; // Green dot for online
+      } else {
+          statusColor = "bg-white border-surface"; // White dot for offline
+      }
+  }
 
   return (
     <div className={`relative ${className}`}>
@@ -343,13 +359,14 @@ export const Avatar: React.FC<{
             </div>
         )}
       </div>
-      {showStatus && online !== undefined && (
+      
+      {shouldShowDot && (
         <div
           className={`
-                    absolute bottom-0 right-0 rounded-full border-2 border-surface bg-green-500
-                    ${size === "xl" ? "w-6 h-6 border-4" : size === "lg" ? "w-4 h-4" : "w-3 h-3"}
-                    ${!online && "bg-surface-highlight border-border"}
-                `}
+            absolute bottom-0 right-0 rounded-full border-2
+            ${statusColor}
+            ${size === "xl" ? "w-6 h-6 border-4" : size === "lg" ? "w-4 h-4" : "w-3 h-3"}
+          `}
         />
       )}
     </div>

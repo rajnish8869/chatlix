@@ -397,26 +397,34 @@ const ChatList: React.FC = () => {
             let displayTime = "";
             let highlight = false;
 
-            // --- BLOCKING LOGIC START ---
-            let isOnline: boolean | undefined = undefined; // Default to undefined (hidden)
+            // --- BLOCKING & PRESENCE LOGIC ---
+            let isOnline: boolean | undefined = undefined; 
+            let isBlocked: boolean = false;
 
             if (chat.type === 'private') {
                 const otherId = chat.participants.find(p => p !== user?.user_id);
                 const otherUser = contacts.find(c => c.user_id === otherId);
                 
                 if (otherUser) {
-                     // Check if they blocked me
+                     // Check if I blocked them (Black Dot)
+                     const iBlockedThem = user?.blocked_users?.includes(otherUser.user_id);
+                     // Check if they blocked me (Hide Status/Pic)
                      const theyBlockedMe = otherUser.blocked_users?.includes(user?.user_id || '');
                      
-                     if (theyBlockedMe) {
+                     if (iBlockedThem) {
+                         isBlocked = true;
+                     } else if (theyBlockedMe) {
                          chatImage = undefined; // Hide Profile Pic
-                         isOnline = undefined;  // Hide Status
+                         isOnline = undefined;  // Hide Status (no dot)
                      } else {
                          isOnline = otherUser.status === 'online';
                      }
                 }
+            } else {
+                // Group chat: no status dot
+                isOnline = undefined; 
             }
-            // --- BLOCKING LOGIC END ---
+            // --- END BLOCKING & PRESENCE LOGIC ---
 
             if (item.type === "message") {
               previewText = item.snippet;
@@ -476,7 +484,8 @@ const ChatList: React.FC = () => {
                           src={chatImage}
                           size="md"
                           online={isOnline}
-                          showStatus={chat.type === "private"}
+                          blocked={isBlocked}
+                          showStatus={chat.type === "private" && !isBlocked && isOnline !== undefined}
                         />
                       )}
                     </div>

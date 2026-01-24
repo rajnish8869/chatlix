@@ -141,6 +141,8 @@ const NewChat: React.FC = () => {
             </h2>
             {filteredContacts.map((contact) => {
               const isSelected = selectedIds.has(contact.user_id);
+              const isBlocked = user?.blocked_users?.includes(contact.user_id);
+
               return (
                 <div
                   key={contact.user_id}
@@ -159,6 +161,7 @@ const NewChat: React.FC = () => {
                     src={contact.profile_picture}
                     size="md"
                     online={contact.status === "online"}
+                    blocked={isBlocked}
                   />
                   <div className="flex-1 min-w-0">
                     <h3
@@ -167,7 +170,7 @@ const NewChat: React.FC = () => {
                       {contact.username}
                     </h3>
                     <p className="text-xs text-text-sub font-medium opacity-70">
-                      {contact.status}
+                      {isBlocked ? "Blocked" : contact.status}
                     </p>
                   </div>
 
