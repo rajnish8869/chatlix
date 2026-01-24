@@ -1,5 +1,4 @@
 
-
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -85,7 +84,12 @@ const ChatInfo: React.FC = () => {
     });
 
   const otherPerson = !isGroup ? participants.find(p => !p.isMe) : null;
-  const isOtherBlocked = otherPerson && user?.blocked_users?.includes(otherPerson.user_id);
+  const iBlockedThem = otherPerson && user?.blocked_users?.includes(otherPerson.user_id);
+  const theyBlockedMe = otherPerson?.blocked_users?.includes(user?.user_id || '');
+  
+  // Mask profile details if they blocked me
+  const displayProfilePic = theyBlockedMe ? undefined : (currentChat.group_image || (currentChat.type === 'private' ? otherPerson?.profile_picture : undefined));
+  const displayName = currentChat.name || "Conversation";
 
   const availableContacts = contacts.filter(
       c => !currentChat.participants.includes(c.user_id) && 
@@ -163,7 +167,7 @@ const ChatInfo: React.FC = () => {
   const promptBlockUser = () => {
       if (!otherPerson) return;
       
-      if (isOtherBlocked) {
+      if (iBlockedThem) {
           setConfirmModal({
               isOpen: true,
               title: "Unblock User?",
@@ -205,7 +209,7 @@ const ChatInfo: React.FC = () => {
              >
                 <Avatar
                     name={currentChat.name || "C"}
-                    src={currentChat.group_image || (currentChat.type === 'private' ? participants.find(p => !p.isMe)?.profile_picture : undefined)}
+                    src={displayProfilePic}
                     size="xl"
                     className="shadow-2xl shadow-primary/30"
                     showStatus={false}
@@ -241,7 +245,7 @@ const ChatInfo: React.FC = () => {
           ) : (
             <div className="flex items-center gap-2 mb-2">
                 <h2 className="text-3xl font-black tracking-tight text-center">
-                    {currentChat.name || "Conversation"}
+                    {displayName}
                 </h2>
                 {isGroup && isAdmin && (
                     <button onClick={() => { setEditName(currentChat.name || ""); setIsEditing(true); }} className="text-primary hover:bg-primary/10 p-1.5 rounded-full transition-colors">
@@ -283,9 +287,9 @@ const ChatInfo: React.FC = () => {
                 >
                     <Avatar
                         name={p.username}
-                        src={p.profile_picture}
+                        src={(!isGroup && theyBlockedMe) ? undefined : p.profile_picture}
                         size="md"
-                        online={p.status === "online"}
+                        online={(!isGroup && theyBlockedMe) ? false : p.status === "online"}
                     />
                     <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
@@ -302,14 +306,14 @@ const ChatInfo: React.FC = () => {
                                 ADMIN
                             </span>
                         )}
-                        {!isGroup && user?.blocked_users?.includes(p.user_id) && (
+                        {!isGroup && iBlockedThem && (
                             <span className="text-[10px] bg-danger/20 text-danger px-2.5 py-0.5 rounded-full font-bold flex-shrink-0">
                                 BLOCKED
                             </span>
                         )}
                     </div>
                     <p className="text-sm text-text-sub opacity-70 truncate">
-                        {p.status}
+                        {(!isGroup && theyBlockedMe) ? "" : p.status}
                     </p>
                     </div>
                     
@@ -341,13 +345,13 @@ const ChatInfo: React.FC = () => {
                           onClick={promptBlockUser}
                           className={`
                               w-full py-4 rounded-2xl font-bold border transition-colors flex items-center justify-center gap-2
-                              ${isOtherBlocked 
+                              ${iBlockedThem 
                                   ? "bg-surface text-text-main border-white/10 hover:bg-surface-highlight" 
                                   : "bg-danger/10 text-danger border-danger/20 hover:bg-danger/20"}
                           `}
                       >
-                          <span className="text-xl">{isOtherBlocked ? "🔓" : "🚫"}</span>
-                          {isOtherBlocked ? "Unblock User" : "Block User"}
+                          <span className="text-xl">{iBlockedThem ? "🔓" : "🚫"}</span>
+                          {iBlockedThem ? "Unblock User" : "Block User"}
                       </button>
                   )
               )}

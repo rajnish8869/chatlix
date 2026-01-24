@@ -1,5 +1,4 @@
 
-
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Chat, Message, AppSettings, User, ApiResponse } from '../types';
 import { useAuth } from './AuthContext';
@@ -473,10 +472,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendMessage = async (chatId: string, text: string, replyTo?: Message['replyTo']) => {
     if (!user || !text.trim()) return;
     
+    const chat = chats.find(c => c.chat_id === chatId);
+    
+    // --- BLOCKING CHECK ---
+    if (chat && chat.type === 'private') {
+        const otherId = chat.participants.find(p => p !== user.user_id);
+        if (otherId) {
+            // Check if I blocked them
+            if (user.blocked_users?.includes(otherId)) {
+                console.warn("Message sending blocked: You blocked this user.");
+                return;
+            }
+            // Check if they blocked me
+            const otherUser = contacts.find(c => c.user_id === otherId);
+            if (otherUser && otherUser.blocked_users?.includes(user.user_id)) {
+                console.warn("Message sending blocked: You have been blocked.");
+                return;
+            }
+        }
+    }
+    
     let content = text;
     let type: 'text' | 'encrypted' = 'text';
-    
-    const chat = chats.find(c => c.chat_id === chatId);
     
     if (chat) {
         if (chat.type === 'private') {
