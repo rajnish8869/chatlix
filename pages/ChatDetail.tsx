@@ -258,6 +258,7 @@ const MessageItem = React.memo(
     onScrollTo,
     isHighlighted,
     isBlocked,
+    blockedName,
   }: {
     msg: Message;
     isMe: boolean;
@@ -272,6 +273,7 @@ const MessageItem = React.memo(
     onScrollTo: (id: string) => void;
     isHighlighted: boolean;
     isBlocked?: boolean;
+    blockedName?: string;
   }) => {
     const touchTimer = useRef<any>(undefined);
 
@@ -346,7 +348,7 @@ const MessageItem = React.memo(
                   <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-white/5 w-full">
                       <Icons.Lock className="w-3 h-3 text-text-sub opacity-50" />
                       <span className="text-[9px] font-bold text-text-sub opacity-50 uppercase tracking-widest leading-none">
-                          Message from a blocked user
+                          {blockedName ? `${blockedName} • ` : ""}Message from a blocked user
                       </span>
                   </div>
               )}
@@ -1076,6 +1078,7 @@ const ChatDetail: React.FC = () => {
                 onScrollTo={scrollToMessage}
                 isHighlighted={highlightedMsgId === msg.message_id}
                 isBlocked={isBlocked}
+                blockedName={isBlocked ? getSenderName(msg.sender_id) : undefined}
               />
             );
           }}
