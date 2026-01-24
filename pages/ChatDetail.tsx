@@ -13,6 +13,7 @@ import {
   ImageViewer,
   BottomSheet,
 } from "../components/AndroidUI";
+import { LinkPreview } from "../components/LinkPreview";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { Message } from "../types";
 
@@ -121,14 +122,29 @@ const MessageContent = ({
   const [text, setText] = useState(
     msg.type === "encrypted" ? "🔓 Decrypting..." : msg.message,
   );
+  
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (msg.type === "encrypted") {
-      decryptFn(msg.chat_id, msg.message, msg.sender_id).then(setText);
+      decryptFn(msg.chat_id, msg.message, msg.sender_id).then((decryptedText: string) => {
+          setText(decryptedText);
+      });
     } else {
       setText(msg.message);
     }
   }, [msg, decryptFn]);
+  
+  // Extract URL for preview from the *decrypted* or loaded text
+  useEffect(() => {
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const match = text.match(urlRegex);
+      if (match && match.length > 0) {
+          setPreviewUrl(match[0]);
+      } else {
+          setPreviewUrl(null);
+      }
+  }, [text]);
 
   const content = React.useMemo(() => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -152,9 +168,14 @@ const MessageContent = ({
   }, [text, isMe]);
 
   return (
-    <p className="text-[15px] leading-[1.5] break-words whitespace-pre-wrap">
-      {content}
-    </p>
+    <div className="flex flex-col">
+        <p className="text-[15px] leading-[1.5] break-words whitespace-pre-wrap">
+          {content}
+        </p>
+        {previewUrl && (
+            <LinkPreview url={previewUrl} isMe={isMe} />
+        )}
+    </div>
   );
 };
 
