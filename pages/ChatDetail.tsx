@@ -984,15 +984,21 @@ const ChatDetail: React.FC = () => {
                     {typingText}
                   </span>
                 ) : (
-                  currentChat?.type === "private" && !theyBlockedMe && !iBlockedThem && (
-                    <span
-                      className={`text-[10px] font-semibold flex items-center gap-1 leading-none ${isOtherOnline ? "text-emerald-500" : "text-text-sub opacity-60"}`}
-                    >
-                      {isOtherOnline && (
-                        <span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
-                      )}
-                      {isOtherOnline ? "Online" : "Offline"}
-                    </span>
+                  currentChat?.type === "private" && (
+                      theyBlockedMe ? (
+                          <span className="text-[10px] font-semibold text-text-sub italic">
+                              User unavailable
+                          </span>
+                      ) : !iBlockedThem ? (
+                        <span
+                        className={`text-[10px] font-semibold flex items-center gap-1 leading-none ${isOtherOnline ? "text-emerald-500" : "text-text-sub opacity-60"}`}
+                        >
+                        {isOtherOnline && (
+                            <span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
+                        )}
+                        {isOtherOnline ? "Online" : "Offline"}
+                        </span>
+                      ) : null
                   )
                 )}
               </div>

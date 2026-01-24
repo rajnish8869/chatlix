@@ -141,27 +141,49 @@ const NewChat: React.FC = () => {
             </h2>
             {filteredContacts.map((contact) => {
               const isSelected = selectedIds.has(contact.user_id);
-              const isBlocked = user?.blocked_users?.includes(contact.user_id);
+              
+              // Blocking Logic
+              const isBlockedByMe = user?.blocked_users?.includes(contact.user_id);
+              const isBlockedByThem = contact.blocked_users?.includes(user?.user_id || '');
+              
+              // Determine display values
+              const avatarSrc = isBlockedByThem ? undefined : contact.profile_picture;
+              const isOnline = isBlockedByThem ? undefined : (contact.status === 'online');
+              
+              // If blocked by them, don't show black dot (that's for when I block them).
+              // Just show no status.
+              // If blocked by me, show black dot (isBlockedByMe is passed as 'blocked').
+              
+              const statusText = isBlockedByThem 
+                  ? "User unavailable" 
+                  : isBlockedByMe 
+                      ? "Blocked" 
+                      : contact.status;
+
+              const isDisabled = isBlockedByThem;
 
               return (
                 <div
                   key={contact.user_id}
-                  onClick={() => toggleSelection(contact.user_id)}
+                  onClick={() => !isDisabled && toggleSelection(contact.user_id)}
                   className={`
-                            flex items-center gap-3 p-3.5 rounded-[24px] active:scale-[0.98] transition-all cursor-pointer border
-                            ${
-                              isSelected
+                            flex items-center gap-3 p-3.5 rounded-[24px] transition-all border
+                            ${isDisabled 
+                                ? "opacity-50 cursor-not-allowed bg-surface/20 border-transparent" 
+                                : "cursor-pointer active:scale-[0.98] hover:bg-surface/60"
+                            }
+                            ${isSelected
                                 ? "bg-primary/15 border-primary/40 shadow-primary/20 shadow-md"
-                                : "bg-surface/40 border-transparent hover:bg-surface/60"
+                                : "border-transparent"
                             }
                         `}
                 >
                   <Avatar
                     name={contact.username}
-                    src={contact.profile_picture}
+                    src={avatarSrc}
                     size="md"
-                    online={contact.status === "online"}
-                    blocked={isBlocked}
+                    online={isOnline}
+                    blocked={isBlockedByMe}
                   />
                   <div className="flex-1 min-w-0">
                     <h3
@@ -169,25 +191,27 @@ const NewChat: React.FC = () => {
                     >
                       {contact.username}
                     </h3>
-                    <p className="text-xs text-text-sub font-medium opacity-70">
-                      {isBlocked ? "Blocked" : contact.status}
+                    <p className={`text-xs font-medium opacity-70 ${isBlockedByThem ? "text-text-sub italic" : "text-text-sub"}`}>
+                      {statusText}
                     </p>
                   </div>
 
-                  <div
-                    className={`
-                            w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0
-                            ${
-                              isSelected
-                                ? "bg-gradient-to-br from-primary to-primary/80 border-primary shadow-glow"
-                                : "border-text-sub/30 hover:border-primary/50"
-                            }
-                        `}
-                  >
-                    {isSelected && (
-                      <Icons.Check className="w-4 h-4 text-white" />
-                    )}
-                  </div>
+                  {!isDisabled && (
+                    <div
+                        className={`
+                                w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0
+                                ${
+                                isSelected
+                                    ? "bg-gradient-to-br from-primary to-primary/80 border-primary shadow-glow"
+                                    : "border-text-sub/30 hover:border-primary/50"
+                                }
+                            `}
+                    >
+                        {isSelected && (
+                        <Icons.Check className="w-4 h-4 text-white" />
+                        )}
+                    </div>
+                  )}
                 </div>
               );
             })}
