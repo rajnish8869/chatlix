@@ -522,15 +522,17 @@ const ChatDetail: React.FC = () => {
   const otherUser = contacts.find((c) => c.user_id === otherUserId);
   
   // --- BLOCKING LOGIC ---
+  // Only restrict sending if it is a PRIVATE chat
   const iBlockedThem = otherUserId ? user?.blocked_users?.includes(otherUserId) : false;
-  // Note: we can check if they blocked me by checking the otherUser object from contacts
   const theyBlockedMe = otherUser?.blocked_users?.includes(user?.user_id || '');
-  const isBlocked = iBlockedThem || theyBlockedMe;
+  const isBlocked = currentChat?.type === 'private' && (iBlockedThem || theyBlockedMe);
 
-  // Mask status if I am blocked
-  const isOtherOnline = !theyBlockedMe && otherUser?.status === "online";
-  // Mask image if I am blocked
-  const chatImage = theyBlockedMe 
+  // Mask status if I am blocked (only in private chat context usually, but if I blocked them I shouldn't see it either)
+  const isOtherOnline = !theyBlockedMe && !iBlockedThem && otherUser?.status === "online";
+  
+  // Mask image if I am blocked or I blocked them (consistent privacy)
+  // In groups, this logic might need to be relaxed or specific per message, but for the TopBar:
+  const chatImage = (currentChat?.type === 'private' && (theyBlockedMe || iBlockedThem))
       ? undefined 
       : (currentChat?.type === 'group' ? currentChat.group_image : otherUser?.profile_picture);
 
@@ -985,7 +987,7 @@ const ChatDetail: React.FC = () => {
                 src={chatImage} // Masked if blocked
                 size="sm"
                 online={currentChat?.type === "private" ? isOtherOnline : undefined}
-                blocked={iBlockedThem}
+                blocked={currentChat?.type === 'private' && iBlockedThem}
                 showStatus={currentChat?.type === "private" && !iBlockedThem && !theyBlockedMe}
               />
               <div className="flex flex-col min-w-0">
@@ -1097,7 +1099,7 @@ const ChatDetail: React.FC = () => {
 
       <div className="w-full pt-1 pb-2 px-3 flex-shrink-0 z-20">
         {isBlocked ? (
-            // --- BLOCKED STATE FOOTER ---
+            // --- BLOCKED STATE FOOTER (ONLY FOR PRIVATE CHATS) ---
             <div className="max-w-5xl mx-auto bg-surface/70 backdrop-blur-xl border border-white/10 shadow-lg rounded-[24px] mb-[env(safe-area-inset-bottom)] p-4 flex flex-col items-center justify-center text-center gap-2 animate-slide-up">
                 <span className="text-sm font-bold text-text-sub">
                     {iBlockedThem ? "You blocked this user." : "You have been blocked by this user."}
@@ -1112,7 +1114,7 @@ const ChatDetail: React.FC = () => {
                 )}
             </div>
         ) : (
-            // --- NORMAL INPUT FOOTER ---
+            // --- NORMAL INPUT FOOTER (GROUP CHATS ALWAYS HERE) ---
             <>
                 {replyingTo && (
                 <div className="max-w-5xl mx-auto bg-gradient-to-r from-surface/90 to-surface/70 backdrop-blur-lg border border-primary/20 rounded-t-3xl p-3 flex items-center justify-between mb-[-8px] pb-5 shadow-lg animate-slide-up">
