@@ -31,11 +31,6 @@ import {
     remove, 
     serverTimestamp 
 } from 'firebase/database';
-import { 
-    ref as storageRef, 
-    uploadBytes, 
-    getDownloadURL 
-} from 'firebase/storage';
 import { auth, db, rtdb, storage } from './firebase';
 
 // Helper to standardise responses
@@ -434,20 +429,27 @@ export const chatService = {
   },
 
   uploadImage: async (chatId: string, file: File): Promise<string> => {
+      // Uses client-side compression and returns Base64 Data URL.
+      // This bypasses CORS issues with Firebase Storage for local dev.
       return compressImage(file, 800, 800, 0.5);
   },
 
   uploadAudio: async (chatId: string, blob: Blob): Promise<string> => {
-    try {
-        const filename = `audio_${Date.now()}.webm`;
-        const fileRef = storageRef(storage, `chat_media/${chatId}/${filename}`);
-        await uploadBytes(fileRef, blob);
-        const downloadURL = await getDownloadURL(fileRef);
-        return downloadURL;
-    } catch (e) {
-        console.error("Failed to upload audio", e);
-        throw e;
-    }
+    // FIX: Using Base64 Data URI to bypass CORS issues on Firebase Storage for local/hybrid dev.
+    // This stores audio directly in Firestore (Free tier limit 1MB per doc).
+    // WebM audio is compact enough for short voice notes.
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            if (typeof reader.result === 'string') {
+                resolve(reader.result);
+            } else {
+                reject(new Error("Failed to process audio data"));
+            }
+        };
+        reader.onerror = (e) => reject(new Error("Audio processing failed"));
+        reader.readAsDataURL(blob);
+    });
   },
 
   sendMessage: async (

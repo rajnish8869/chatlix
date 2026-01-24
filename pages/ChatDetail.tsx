@@ -447,12 +447,18 @@ const ChatDetail: React.FC = () => {
 
   // Audio Recording State
   const [isRecording, setIsRecording] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false); // Visual feedback for "Starting..."
   const [recordingDuration, setRecordingDuration] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<any>(null);
   const dragStartXRef = useRef<number | null>(null);
   const [dragDistance, setDragDistance] = useState(0);
+  
+  // Ref to track if user is physically holding the button.
+  // This solves the race condition where permission prompt takes time,
+  // and user releases the button before recording starts.
+  const isPressingRef = useRef(false);
 
   // Scroll & Highlight State
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
@@ -535,8 +541,6 @@ const ChatDetail: React.FC = () => {
 
       if (index !== -1) {
         // Found it!
-        // Use timeout to ensure Virtuoso is ready and rendered.
-        // Use 'auto' behavior for instant jump on load.
         setTimeout(() => {
           virtuosoRef.current?.scrollToIndex({
             index,
@@ -547,19 +551,16 @@ const ChatDetail: React.FC = () => {
 
         setHighlightedMsgId(pendingScrollTo.id);
         setPendingScrollTo(null);
-        // Remove highlight after animation
         setTimeout(() => setHighlightedMsgId(null), 2500);
       } else {
         // Not found yet
         if (pendingScrollTo.attempts < 10) {
-          // Try loading more
           loadMoreMessages(chatId).then(() => {
             setPendingScrollTo((prev) =>
               prev ? { ...prev, attempts: prev.attempts + 1 } : null,
             );
           });
         } else {
-          // Give up after enough tries
           setPendingScrollTo(null);
         }
       }
@@ -654,66 +655,101 @@ const ChatDetail: React.FC = () => {
   // --- Audio Recording Handlers ---
 
   const startRecording = async () => {
+    // 1. Mark that the user is actively pressing
+    isPressingRef.current = true;
+    setIsPreparing(true); // Show yellow/loading state
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Audio recording is not supported on this device/browser.");
+        setIsPreparing(false);
+        isPressingRef.current = false;
+        return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+
+      // 2. Race Condition Check:
+      // Did the user release the button while the permission dialog was open?
+      if (!isPressingRef.current) {
+          console.log("User released button before permission granted. Aborting.");
+          stream.getTracks().forEach(t => t.stop());
+          setIsPreparing(false);
+          return;
+      }
+
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
-      mediaRecorderRef.current.ondataavailable = (event) => {
+      recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
 
-      mediaRecorderRef.current.start();
+      recorder.start();
+      
       setIsRecording(true);
+      setIsPreparing(false);
       setRecordingDuration(0);
       setDragDistance(0);
 
+      // Start Timer
+      clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = setInterval(() => {
         setRecordingDuration((prev) => prev + 1);
       }, 1000);
 
     } catch (err: any) {
       console.error("Error accessing microphone:", err);
+      setIsPreparing(false);
+      isPressingRef.current = false;
+      
       let errorMessage = "Microphone access error.";
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          errorMessage = "Microphone permission denied. Please enable it in your settings.";
+          errorMessage = "Microphone permission denied. Please enable it in settings.";
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
           errorMessage = "No microphone found.";
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-          errorMessage = "Microphone is already in use.";
       }
       alert(errorMessage);
     }
   };
 
   const stopRecording = (shouldSend: boolean) => {
-    if (mediaRecorderRef.current && isRecording) {
+    isPressingRef.current = false; // Mark released
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.onstop = async () => {
+        // Cleanup tracks
+        const tracks = mediaRecorderRef.current?.stream.getTracks();
+        tracks?.forEach(track => track.stop());
+
         if (shouldSend && chatId) {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          if (audioBlob.size > 0) {
+          // Prevent accidental clicks (empty or very short recordings < 0.5s)
+          if (audioBlob.size > 1000) {
               virtuosoRef.current?.scrollTo({ top: 10000000, behavior: "smooth" });
               await sendAudio(chatId, audioBlob);
           }
         }
-        
-        // Cleanup
-        const tracks = mediaRecorderRef.current?.stream.getTracks();
-        tracks?.forEach(track => track.stop());
       };
       
       mediaRecorderRef.current.stop();
     }
 
     setIsRecording(false);
+    setIsPreparing(false);
     setDragDistance(0);
     clearInterval(recordingTimerRef.current);
   };
 
-  // Gesture Handlers for Slide-to-Cancel
+  // Gesture Handlers
   const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+     // Prevent default to avoid ghost clicks if possible, 
+     // but be careful not to block scrolling if this was a list item.
+     // Here it's a fixed button, so safe-ish.
+     
      if ('touches' in e) {
          dragStartXRef.current = e.touches[0].clientX;
      } else {
@@ -737,7 +773,7 @@ const ChatDetail: React.FC = () => {
           setDragDistance(diff);
       }
 
-      // If dragged far enough, cancel
+      // If dragged far enough left, cancel
       if (diff > 150) {
           stopRecording(false); // Cancel
           dragStartXRef.current = null;
@@ -745,9 +781,7 @@ const ChatDetail: React.FC = () => {
   };
 
   const handleTouchEnd = () => {
-      if (isRecording) {
-          stopRecording(true); // Send
-      }
+      stopRecording(true); // Try to send
       dragStartXRef.current = null;
   };
 
@@ -1112,12 +1146,19 @@ const ChatDetail: React.FC = () => {
                     onTouchStart={handleTouchStart}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
-                    onMouseDown={handleTouchStart} // For desktop testing
-                    onMouseUp={handleTouchEnd}     // For desktop testing
-                    onMouseMove={handleTouchMove}  // For desktop testing
-                    onMouseLeave={handleTouchEnd}
+                    onMouseDown={handleTouchStart} // Desktop support
+                    onMouseUp={handleTouchEnd}     // Desktop support
+                    onMouseMove={handleTouchMove}  // Desktop support
+                    onMouseLeave={handleTouchEnd}  // Desktop support
                   >
-                      <button className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 ${isRecording ? "bg-danger scale-125 shadow-lg shadow-danger/40 text-white" : "bg-surface-highlight text-text-sub hover:bg-primary/10 hover:text-primary"}`}>
+                      <button 
+                        type="button" // Prevent form submission if any
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 
+                            ${isRecording ? "bg-danger scale-125 shadow-lg shadow-danger/40 text-white" : 
+                             isPreparing ? "bg-surface-highlight scale-90 opacity-80 text-primary" :
+                            "bg-surface-highlight text-text-sub hover:bg-primary/10 hover:text-primary"}`}
+                        style={{ touchAction: 'none' }} // Crucial for mobile event handling
+                      >
                         <Icons.Mic className="w-5 h-5" />
                       </button>
                   </div>
