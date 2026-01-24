@@ -1,4 +1,5 @@
 
+
 export interface User {
   user_id: string; // Matches Firebase Auth UID
   username: string;

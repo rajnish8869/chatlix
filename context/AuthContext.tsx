@@ -1,10 +1,11 @@
 
+
 import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { chatService } from '../services/chatService';
 import { auth, db } from '../services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { generateKeyPair } from '../utils/crypto';
 import { SecureStorage } from '../utils/storage';
 
@@ -25,26 +26,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Firebase Auth Listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-        if (currentUser) {
-            // 1. Fetch Remote Profile First
-            const userDocRef = doc(db, 'users', currentUser.uid);
-            let remoteData: User | null = null;
-            
-            try {
-                const snap = await getDoc(userDocRef);
-                if (snap.exists()) {
-                    remoteData = snap.data() as User;
-                }
-            } catch (e) {
-                console.error("Failed to fetch user profile", e);
-            }
+    let profileUnsub: (() => void) | null = null;
 
-            // 2. Handle Key Synchronization & Secure Storage Migration
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        // Clear previous listener if any
+        if (profileUnsub) {
+            profileUnsub();
+            profileUnsub = null;
+        }
+
+        if (currentUser) {
+            const userDocRef = doc(db, 'users', currentUser.uid);
             
-            // Check Secure Storage first
+            // --- One-time Key Setup ---
+            // Fetch once to check keys without setting up listener yet
+            let initialSnap = await getDoc(userDocRef);
+            let remoteData = initialSnap.exists() ? initialSnap.data() as User : null;
+
             let privKey = await SecureStorage.get(`chatlix_priv_${currentUser.uid}`);
             let pubKey = remoteData?.publicKey;
 
@@ -59,45 +58,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
 
-            // Scenario: New Device / Cleared Storage -> Restore from Server
-            if (!privKey && remoteData?.privateKey) {
-                console.log("[Auth] Restoring keys from server...");
-                privKey = remoteData.privateKey;
-                await SecureStorage.set(`chatlix_priv_${currentUser.uid}`, privKey);
-            }
+            // Restore from Server if lost locally
+             if (!privKey && remoteData?.privateKey) {
+                 console.log("[Auth] Restoring keys from server...");
+                 privKey = remoteData.privateKey;
+                 await SecureStorage.set(`chatlix_priv_${currentUser.uid}`, privKey);
+             }
 
-            // Scenario: First time setup or Total Loss -> Generate New
-            if (!privKey) {
-                console.log("[Auth] Generating new KeyPair...");
-                const keys = await generateKeyPair();
-                privKey = keys.privateKey;
-                pubKey = keys.publicKey;
-                
-                await SecureStorage.set(`chatlix_priv_${currentUser.uid}`, privKey);
-                
-                // Upload both keys to server
-                await chatService.updateUserKeys(currentUser.uid, pubKey, privKey);
-            }
+             // Generate new if totally missing
+             if (!privKey) {
+                 console.log("[Auth] Generating new KeyPair...");
+                 const keys = await generateKeyPair();
+                 privKey = keys.privateKey;
+                 pubKey = keys.publicKey;
+                 await SecureStorage.set(`chatlix_priv_${currentUser.uid}`, privKey);
+                 await chatService.updateUserKeys(currentUser.uid, pubKey, privKey);
+             }
 
-            // 3. Set User State
-            const finalUser: User = {
-                 user_id: currentUser.uid,
-                 username: remoteData?.username || currentUser.displayName || 'User',
-                 email: currentUser.email || '',
-                 status: 'online',
-                 last_seen: new Date().toISOString(),
-                 is_blocked: remoteData?.is_blocked || false,
-                 publicKey: pubKey,
-                 privateKey: privKey, // We keep it in state too just in case
-                 enable_groups: remoteData?.enable_groups !== undefined ? remoteData.enable_groups : true,
-                 profile_picture: remoteData?.profile_picture
-            };
+             // Initialize Presence (RTDB)
+             chatService.initializePresence(currentUser.uid);
 
-            setUser(finalUser);
-            setIsLoading(false);
-
-            // 4. Initialize Realtime Presence (RTDB)
-            chatService.initializePresence(currentUser.uid);
+             // --- Realtime Profile Listener ---
+             // This is crucial for "Blocked Users" list updates to reflect immediately
+             profileUnsub = onSnapshot(userDocRef, (docSnap) => {
+                 const data = docSnap.data() as User | undefined;
+                 
+                 const finalUser: User = {
+                     user_id: currentUser.uid,
+                     username: data?.username || currentUser.displayName || 'User',
+                     email: currentUser.email || '',
+                     status: 'online',
+                     last_seen: new Date().toISOString(),
+                     is_blocked: data?.is_blocked || false,
+                     publicKey: data?.publicKey || pubKey, 
+                     privateKey: privKey || undefined, 
+                     enable_groups: data?.enable_groups ?? true,
+                     profile_picture: data?.profile_picture,
+                     blocked_users: data?.blocked_users || [] // Real-time update here
+                 };
+                 
+                 setUser(finalUser);
+                 setIsLoading(false);
+             });
 
         } else {
             setUser(null);
@@ -107,6 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
         unsubscribe();
+        if (profileUnsub) profileUnsub();
     };
   }, []);
 
@@ -122,20 +125,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateName = async (name: string) => {
     if (!user) return;
     await chatService.updateUserProfile(user.user_id, { username: name });
-    setUser(prev => prev ? { ...prev, username: name } : null);
   };
   
   const toggleGroupChats = async () => {
       if (!user) return;
       const newValue = !(user.enable_groups ?? true);
       await chatService.updateUserProfile(user.user_id, { enable_groups: newValue });
-      setUser(prev => prev ? { ...prev, enable_groups: newValue } : null);
   };
 
   const updateProfilePicture = async (file: File) => {
       if (!user) return;
-      const url = await chatService.uploadProfilePicture(user.user_id, file);
-      setUser(prev => prev ? { ...prev, profile_picture: url } : null);
+      await chatService.uploadProfilePicture(user.user_id, file);
   };
 
   return (

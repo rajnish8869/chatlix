@@ -17,7 +17,7 @@ const ChatInfo: React.FC = () => {
       updateGroupInfo, 
       addGroupMember, 
       removeGroupMember,
-      deleteChats, // Used for leaving or deleting
+      deleteChats, 
       blockUser,
       unblockUser
   } = useData();
@@ -30,12 +30,10 @@ const ChatInfo: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Add Member State
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
   const [loadingAction, setLoadingAction] = useState(false);
 
-  // Remove/Leave/Block State
   const [confirmModal, setConfirmModal] = useState<{
       isOpen: boolean;
       title: string;
@@ -86,11 +84,9 @@ const ChatInfo: React.FC = () => {
       return unknownUser;
     });
 
-  // For 1-on-1 chats, identify the other person
   const otherPerson = !isGroup ? participants.find(p => !p.isMe) : null;
   const isOtherBlocked = otherPerson && user?.blocked_users?.includes(otherPerson.user_id);
 
-  // Filter contacts for adding (exclude existing)
   const availableContacts = contacts.filter(
       c => !currentChat.participants.includes(c.user_id) && 
       c.username.toLowerCase().includes(searchFilter.toLowerCase())
@@ -155,7 +151,6 @@ const ChatInfo: React.FC = () => {
           confirmText: "Leave",
           action: async () => {
               if (participants.length === 1) {
-                   // Just delete if last one
                    await deleteChats([chatId!]); 
               } else {
                    await removeGroupMember(chatId!, user!.user_id);
@@ -169,7 +164,6 @@ const ChatInfo: React.FC = () => {
       if (!otherPerson) return;
       
       if (isOtherBlocked) {
-          // Unblock
           setConfirmModal({
               isOpen: true,
               title: "Unblock User?",
@@ -181,7 +175,6 @@ const ChatInfo: React.FC = () => {
               }
           });
       } else {
-          // Block
           setConfirmModal({
               isOpen: true,
               title: "Block User?",
@@ -309,7 +302,6 @@ const ChatInfo: React.FC = () => {
                                 ADMIN
                             </span>
                         )}
-                        {/* Only show blocked label for 1-on-1 */}
                         {!isGroup && user?.blocked_users?.includes(p.user_id) && (
                             <span className="text-[10px] bg-danger/20 text-danger px-2.5 py-0.5 rounded-full font-bold flex-shrink-0">
                                 BLOCKED
@@ -334,7 +326,6 @@ const ChatInfo: React.FC = () => {
               </div>
           </div>
 
-          {/* Danger Zone */}
           <div className="pt-4 space-y-3">
               {isGroup ? (
                   <button 

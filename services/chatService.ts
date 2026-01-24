@@ -188,8 +188,6 @@ export const chatService = {
       }
   },
 
-  // Note: This Firestore update is kept for historical/profile data, 
-  // but real-time presence is now handled by initializePresence via RTDB
   updateHeartbeat: async (userId: string) => {
       try {
           await updateDoc(doc(db, 'users', userId), {
@@ -265,7 +263,6 @@ export const chatService = {
     }
   },
 
-  // Returns Firestore user profiles. Status is merged in DataContext from RTDB.
   subscribeToUsers: (currentUserId: string, callback: (users: User[]) => void) => {
       const q = query(collection(db, 'users'), limit(100));
       return onSnapshot(q, (snapshot) => {
@@ -277,7 +274,6 @@ export const chatService = {
                       users.push({ 
                           ...data, 
                           user_id: doc.id,
-                          // Default to offline in profile, overriden by RTDB
                           status: 'offline', 
                           last_seen: data.last_seen || new Date(0).toISOString(),
                       } as User);
@@ -299,12 +295,10 @@ export const chatService = {
               return;
           }
 
-          // When we disconnect, remove this device
           onDisconnect(userStatusDatabaseRef).set({
               state: 'offline',
               last_changed: serverTimestamp(),
           }).then(() => {
-              // When we connect, set status to online
               set(userStatusDatabaseRef, {
                   state: 'online',
                   last_changed: serverTimestamp(),
@@ -333,7 +327,6 @@ export const chatService = {
       encryptedKeys?: Record<string, string>
     ): Promise<ApiResponse<Chat>> => {
     try {
-      // If 1-on-1 and no group name forced, check for existing
       if (participants.length === 2 && !groupName) {
           const q = query(
               collection(db, 'chats'), 
@@ -357,9 +350,8 @@ export const chatService = {
           name: groupName || (isGroup ? 'Group Chat' : '')
       };
 
-      // Add E2EE payload for groups
       if (isGroup) {
-          newChatData.admins = [userId]; // Creator is admin
+          newChatData.admins = [userId]; 
           if (encryptedKeys) {
              newChatData.key_issuer_id = userId;
              newChatData.encrypted_keys = encryptedKeys;
@@ -434,7 +426,6 @@ export const chatService = {
       }
   },
 
-  // Key Rotation on removal
   removeGroupParticipant: async (
       chatId: string, 
       userIdToRemove: string, 
@@ -446,7 +437,7 @@ export const chatService = {
               participants: arrayRemove(userIdToRemove),
               admins: arrayRemove(userIdToRemove),
               key_issuer_id: newKeyIssuerId,
-              encrypted_keys: newEncryptedKeys, // Full replacement for rotation
+              encrypted_keys: newEncryptedKeys, 
               updated_at: new Date().toISOString()
           });
       } catch (e) {
@@ -512,15 +503,10 @@ export const chatService = {
   },
 
   uploadImage: async (chatId: string, file: File): Promise<string> => {
-      // Uses client-side compression and returns Base64 Data URL.
-      // This bypasses CORS issues with Firebase Storage for local dev.
       return compressImage(file, 800, 800, 0.5);
   },
 
   uploadAudio: async (chatId: string, blob: Blob): Promise<string> => {
-    // FIX: Using Base64 Data URI to bypass CORS issues on Firebase Storage for local/hybrid dev.
-    // This stores audio directly in Firestore (Free tier limit 1MB per doc).
-    // WebM audio is compact enough for short voice notes.
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -560,7 +546,6 @@ export const chatService = {
 
       let msgRef;
       if (customMessageId) {
-          // Idempotent write using setDoc
           msgRef = doc(db, `chats/${chatId}/messages`, customMessageId);
           await setDoc(msgRef, msgData);
       } else {
@@ -612,12 +597,10 @@ export const chatService = {
             const existingReaction = currentReactions[userId];
 
             if (existingReaction === reaction) {
-                // Remove if same
                 await updateDoc(msgRef, {
                     [`reactions.${userId}`]: deleteField()
                 });
             } else {
-                // Add or update
                 await updateDoc(msgRef, {
                     [`reactions.${userId}`]: reaction
                 });
@@ -739,7 +722,6 @@ export const chatService = {
       try {
         const typingRef = dbRef(rtdb, `typing/${chatId}/${userId}`);
         if (isTyping) {
-            // Set timestamp and remove on disconnect
             await set(typingRef, serverTimestamp());
             onDisconnect(typingRef).remove();
         } else {

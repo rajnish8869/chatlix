@@ -15,7 +15,7 @@ import {
 } from '../utils/crypto';
 import { SecureStorage } from '../utils/storage';
 import { doc, getDoc } from 'firebase/firestore'; 
-import { db } from '../services/firebase'; // Direct db access for user key fetching if needed
+import { db } from '../services/firebase'; 
 
 // Type alias for unsubscribe function
 type UnsubscribeFunc = () => void;
@@ -67,7 +67,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { user } = useAuth();
   const [chats, setChats] = useState<Chat[]>([]);
   const [contacts, setContacts] = useState<User[]>([]);
-  // We keep raw firestore users separately so we can merge with RTDB status
   const [rawFirestoreUsers, setRawFirestoreUsers] = useState<User[]>([]);
   const [rtdbPresence, setRtdbPresence] = useState<Record<string, any>>({});
 
@@ -113,13 +112,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const processQueue = useCallback(async () => {
       if (queue.length === 0 || !navigator.onLine) return;
       
-      console.log(`[Queue] Processing ${queue.length} messages...`);
       const currentQueue = [...queue];
       const remainingQueue: QueueItem[] = [];
 
       for (const item of currentQueue) {
           try {
-              // Idempotent Send: pass the item.id (the temporary ID) as customMessageId
+              // Idempotent Send
               await chatService.sendMessage(
                   item.chatId,
                   item.senderId,
@@ -128,9 +126,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   item.replyTo,
                   item.id
               );
-              console.log(`[Queue] Sent message ${item.id}`);
           } catch (e) {
-              console.error(`[Queue] Failed to send ${item.id}`, e);
               remainingQueue.push(item);
           }
       }
@@ -148,7 +144,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
-    // Attempt processing on mount if online
     if (navigator.onLine) {
         processQueue();
     }
@@ -161,7 +156,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Sync Typing Listeners with Chats
   useEffect(() => {
-      // For every chat in the list, subscribe to typing status
       chats.forEach(chat => {
           if (!typingUnsubs.current[chat.chat_id]) {
               typingUnsubs.current[chat.chat_id] = chatService.subscribeToChatTyping(chat.chat_id, (userIds) => {
@@ -176,7 +170,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               });
           }
       });
-  }, [chats, user?.blocked_users]); // Re-run if blocked users change
+  }, [chats, user?.blocked_users]); 
 
   // Combine Firestore Profiles + RTDB Presence
   useEffect(() => {
@@ -190,12 +184,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return {
             ...u,
             status: presence?.state || 'offline',
-            // Prefer RTDB timestamp for accuracy, fallback to Firestore
             last_seen: presence?.last_changed ? new Date(presence.last_changed).toISOString() : u.last_seen
         };
     });
 
-    // Sort: Online first, then alphabetical
     mergedContacts.sort((a, b) => {
         if (a.status === 'online' && b.status !== 'online') return -1;
         if (a.status !== 'online' && b.status === 'online') return 1;
@@ -217,7 +209,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (chatsUnsub.current) chatsUnsub.current();
         if (contactsUnsub.current) contactsUnsub.current();
         if (presenceUnsub.current) presenceUnsub.current();
-        // Cleanup typing subs
         Object.values(typingUnsubs.current).forEach((unsub: any) => {
             if (typeof unsub === 'function') unsub();
         });
@@ -233,20 +224,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncing(false);
 
         newChats.forEach(chat => {
-            // Check if key_issuer_id changed (rotation happened), invalidate cache
-            if (chat.type === 'group' && chat.key_issuer_id) {
-                 // Simple logic: if we have a key cached but the encrypted key payload for me changed, we need to re-decrypt
-                 // Ideally we'd compare versions, but comparing the encrypted string works
-                 const myEncKey = chat.encrypted_keys?.[user.user_id];
-                 // If we have a cached key, but the encrypted blob changed?
-                 // For now, rely on `decryptContent` logic to handle fetching
-            }
-
             if (chat.last_message && 
                 chat.last_message.sender_id !== user.user_id && 
                 chat.last_message.status === 'sent') {
-                 // Don't mark delivered if blocked? 
-                 // It's acceptable to not ack delivery for blocked users.
+                 // Don't mark delivered if blocked
                  if (!user.blocked_users?.includes(chat.last_message.sender_id)) {
                     chatService.markChatDelivered(chat.chat_id, user.user_id);
                  }
@@ -254,12 +235,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
     }) as UnsubscribeFunc;
 
-    // 2. Subscribe to Users (Firestore Profile Data)
+    // 2. Subscribe to Users
     contactsUnsub.current = chatService.subscribeToUsers(user.user_id, (users) => {
         setRawFirestoreUsers(users);
     }) as UnsubscribeFunc;
 
-    // 3. Subscribe to Global Presence (RTDB)
+    // 3. Subscribe to Global Presence
     presenceUnsub.current = chatService.subscribeToGlobalPresence((presenceMap) => {
         setRtdbPresence(presenceMap);
     }) as unknown as UnsubscribeFunc;
@@ -271,7 +252,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Force refresh message listeners if blocked list changes
-    // This ensures existing listeners update their filter logic
     Object.keys(messageUnsubs.current).forEach(chatId => {
         const unsub = messageUnsubs.current[chatId];
         if (typeof unsub === 'function') unsub();
@@ -290,9 +270,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
              if (typeof unsub === 'function') unsub();
         });
     };
-  }, [user]); // Re-run everything when user (including blocked_users) changes
+  }, [user]); 
 
-  // Retrieve 1-on-1 Shared Secret
   const getSharedKey = async (otherUserId: string): Promise<CryptoKey | null> => {
       if (!user) return null;
       const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user.user_id}`);
@@ -300,20 +279,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let targetPubKey = '';
 
-      // 1. Check if it is Me
       if (otherUserId === user.user_id) {
           targetPubKey = user.publicKey || '';
       } 
-      // 2. Check Contacts List
       else {
           const contact = contacts.find(c => c.user_id === otherUserId);
           if (contact) {
               targetPubKey = contact.publicKey || '';
           } else {
-              // 3. Fallback: Fetch from Firestore (if not in loaded contacts)
-              // This is crucial for fixing "Key Mismatch" when chatting with users not in the initial list
               try {
-                 // Optimization: Check rawFirestoreUsers first
                  const raw = rawFirestoreUsers.find(u => u.user_id === otherUserId);
                  if (raw && raw.publicKey) {
                      targetPubKey = raw.publicKey;
@@ -333,7 +307,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!targetPubKey) return null;
 
-      // Check Cache
       const cached = sharedKeysCache.current[otherUserId];
       if (cached && cached.pubKeyStr === targetPubKey) {
           return cached.key;
@@ -353,18 +326,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const chat = chats.find(c => c.chat_id === chatId);
       if (!chat) return content;
 
-      // --- GROUP CHAT DECRYPTION ---
       if (chat.type === 'group') {
-          // If no E2EE setup for this group (legacy), return raw
           if (!chat.encrypted_keys || !chat.key_issuer_id) return content;
 
-          // Check if we need to rotate/reload the key (e.g. issuer changed or my key changed)
-          // For simplicity, we assume if we fail to decrypt with cached key, we retry fetching
           if (groupKeysCache.current[chatId]) {
               try {
                  return await decryptMessage(content, groupKeysCache.current[chatId]);
               } catch (e) {
-                 // If decryption failed, maybe key rotated? Fallthrough to re-fetch
                  groupKeysCache.current[chatId] = undefined as any;
               }
           }
@@ -373,9 +341,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!myEncryptedKey) return "🔒 Access Denied (No Key)";
 
           try {
-              // The key was encrypted by the Issuer for Me.
-              // So I decrypt using Shared(Me, Issuer).
-              // Note: If I am the Issuer, Shared(Me, Me) is valid.
               const sharedKey = await getSharedKey(chat.key_issuer_id);
               if (!sharedKey) return "🔒 Key Failure";
 
@@ -391,7 +356,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
       } 
       
-      // --- PRIVATE CHAT DECRYPTION ---
       const otherId = chat.participants.find(p => p !== user?.user_id);
       
       if (otherId) {
@@ -417,11 +381,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let encryptedKeysPayload: Record<string, string> | undefined = undefined;
 
     if (isGroup) {
-        // 1. Generate Group Key
         const groupKey = await generateSymmetricKey();
         const groupKeyStr = await exportKeyToString(groupKey);
 
-        // 2. Encrypt Group Key for each participant
         encryptedKeysPayload = {};
         const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user.user_id}`);
 
@@ -479,7 +441,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return { ...prev, [chatId]: merged };
         });
     }) as UnsubscribeFunc;
-  }, [user]); // Re-create subscription logic if user (blocks) changes
+  }, [user]); 
 
   const loadMoreMessages = async (chatId: string) => {
       if (loadingHistory[chatId]) return;
@@ -525,7 +487,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let content = text;
     let type: 'text' | 'encrypted' = 'text';
     
-    // Prepare encryption if necessary
     const chat = chats.find(c => c.chat_id === chatId);
     
     if (chat) {
@@ -538,7 +499,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     type = 'encrypted';
                 }
             } else if (chat.participants.length === 1 && chat.participants[0] === user.user_id) {
-                // Self chat
                 const key = await getSharedKey(user.user_id);
                 if (key) {
                     content = await encryptMessage(text, key);
@@ -546,7 +506,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
         } else if (chat.type === 'group' && chat.encrypted_keys) {
-            // Ensure we have the group key loaded
             if (!groupKeysCache.current[chatId]) {
                  await decryptContent(chatId, "WARMUP", user.user_id);
             }
@@ -562,7 +521,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }
 
-    // 1. Generate Optimistic ID and Message
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date().toISOString();
     
@@ -671,7 +629,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const chat = chats.find(c => c.chat_id === chatId);
       if (!chat || chat.type !== 'group' || !chat.encrypted_keys) return;
 
-      // 1. Decrypt current Group Key
       if (!groupKeysCache.current[chatId]) {
           await decryptContent(chatId, "WARMUP", user.user_id);
       }
@@ -680,21 +637,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const groupKeyStr = await exportKeyToString(groupKey);
 
-      // 2. Fetch new user's Public Key
       const userDocRef = doc(db, 'users', newUserId);
       const userSnap = await getDoc(userDocRef);
       if (!userSnap.exists()) throw new Error("User not found");
       const newUser = userSnap.data() as User;
       if (!newUser.publicKey) throw new Error("User has no keys setup");
 
-      // 3. Encrypt Group Key for New User (using Shared Secret)
       const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user.user_id}`);
       if (!myPrivKeyStr) throw new Error("Private Key Missing");
       
       const sharedSecret = await deriveSharedKey(myPrivKeyStr, newUser.publicKey);
       const newEncryptedKey = await encryptMessage(groupKeyStr, sharedSecret);
 
-      // 4. Update Database
       await chatService.addGroupParticipant(chatId, newUserId, newEncryptedKey);
   };
 
@@ -703,7 +657,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const chat = chats.find(c => c.chat_id === chatId);
       if (!chat || chat.type !== 'group') return;
 
-      // 1. Generate NEW Group Key (Rotation)
       const newGroupKey = await generateSymmetricKey();
       const newGroupKeyStr = await exportKeyToString(newGroupKey);
 
@@ -713,12 +666,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const remainingParticipants = chat.participants.filter(p => p !== userIdToRemove);
       const newEncryptedKeys: Record<string, string> = {};
 
-      // 2. Encrypt NEW Group Key for ALL remaining participants (including Self)
       for (const pId of remainingParticipants) {
            let pUser = contacts.find(c => c.user_id === pId);
            if (pId === user.user_id) pUser = user;
 
-           // Fallback fetch if not in contacts
            if (!pUser && pId !== user.user_id) {
                const docRef = doc(db, 'users', pId);
                const snap = await getDoc(docRef);
@@ -732,10 +683,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
            }
       }
 
-      // 3. Update DB (Atomic Remove + Key Rotation)
       await chatService.removeGroupParticipant(chatId, userIdToRemove, user.user_id, newEncryptedKeys);
 
-      // 4. Update Local Cache Immediately
       groupKeysCache.current[chatId] = newGroupKey;
   };
 
@@ -744,7 +693,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const blockUser = async (targetUserId: string) => {
       if(!user) return;
       await chatService.blockUser(user.user_id, targetUserId);
-      // NOTE: The update will trigger the auth/user effect, which will rebuild filters automatically
   };
 
   const unblockUser = async (targetUserId: string) => {

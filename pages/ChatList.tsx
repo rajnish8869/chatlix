@@ -8,7 +8,6 @@ import { useNavigate } from "react-router-dom";
 import { Chat, Message } from "../types";
 import { Virtuoso } from "react-virtuoso";
 
-// Extracted wrapper component to avoid re-creation and fix type issues with 'key' prop
 interface ChatItemWrapperProps {
   children: React.ReactNode;
   chatId: string;
@@ -46,14 +45,13 @@ const ChatItemWrapper: React.FC<ChatItemWrapperProps> = ({
   );
 };
 
-// Unified List Item Type
 type ListItem =
   | { type: "chat"; chat: Chat; id: string }
   | { type: "message"; chat: Chat; message: Message; snippet: string; id: string };
 
 const ChatList: React.FC = () => {
   const {
-    chats,
+    chats: allChats,
     refreshChats,
     messages,
     contacts,
@@ -76,16 +74,26 @@ const ChatList: React.FC = () => {
   const isSelectionMode = selectedChatIds.size > 0;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Search Results
   const [searchResults, setSearchResults] = useState<ListItem[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+
+  const chats = React.useMemo(() => {
+    return allChats.filter(chat => {
+        if (chat.type === 'private') {
+            const otherId = chat.participants.find(p => p !== user?.user_id);
+            if (otherId && user?.blocked_users?.includes(otherId)) {
+                return false;
+            }
+        }
+        return true;
+    });
+  }, [allChats, user]);
 
   useEffect(() => {
     refreshChats();
     loadContacts();
   }, []);
 
-  // Effect to decrypt last_messages for the main list (when not searching)
   useEffect(() => {
     chats.forEach(async (chat) => {
       const lastMsg =
@@ -107,13 +115,11 @@ const ChatList: React.FC = () => {
             [lastMsg.message_id]: text,
           }));
         } catch (e) {
-          // Ignore
         }
       }
     });
   }, [chats, messages, decryptedPreviews, decryptContent]);
 
-  // Async Search Effect
   useEffect(() => {
     const runSearch = async () => {
       if (!searchQuery.trim()) {
@@ -132,11 +138,9 @@ const ChatList: React.FC = () => {
         const isNameMatch = chatName.includes(query);
         let hasMessageMatch = false;
 
-        // Message Matching
         const localMsgs = messages[chat.chat_id] || [];
         const candidates = [...localMsgs];
 
-        // Ensure last_message is included if not already in localMsgs
         if (
           chat.last_message &&
           !localMsgs.some(
@@ -146,19 +150,16 @@ const ChatList: React.FC = () => {
           candidates.push(chat.last_message);
         }
 
-        // Sort candidates by timestamp desc (newest first)
         candidates.sort(
           (a, b) =>
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         );
 
-        // Find matches
         for (const m of candidates) {
           let text = m.message;
           if (m.type === "image") {
             text = "image";
           } else if (m.type === "encrypted") {
-            // Check cache
             if (decryptedPreviews[m.message_id]) {
               text = decryptedPreviews[m.message_id];
             } else if (newDecrypted[m.message_id]) {
@@ -189,9 +190,6 @@ const ChatList: React.FC = () => {
           }
         }
 
-        // If Name matches and we don't have message matches (or want to show generic entry too)
-        // Here: if generic match is desired, add it.
-        // We will add it if NO message matches found, so user still sees the chat.
         if (isNameMatch && !hasMessageMatch) {
           results.push({
             type: "chat",
@@ -201,7 +199,6 @@ const ChatList: React.FC = () => {
         }
       }
 
-      // Batch update cached previews
       if (Object.keys(newDecrypted).length > 0) {
         setDecryptedPreviews((prev) => ({ ...prev, ...newDecrypted }));
       }
@@ -247,12 +244,10 @@ const ChatList: React.FC = () => {
       toggleSelection(item.chat.chat_id);
     } else {
       if (item.type === "message") {
-        // Navigate and scroll to message
         navigate(`/chat/${item.chat.chat_id}`, {
           state: { scrollToMessageId: item.message.message_id },
         });
       } else {
-        // Just navigate
         navigate(`/chat/${item.chat.chat_id}`);
       }
     }
@@ -291,7 +286,6 @@ const ChatList: React.FC = () => {
     return active.some((id) => id !== user?.user_id);
   };
 
-  // Prepare data for Virtuoso
   const data: ListItem[] =
     searchResults !== null
       ? searchResults
@@ -417,7 +411,6 @@ const ChatList: React.FC = () => {
               displayTime = item.message.timestamp;
               highlight = true;
             } else {
-              // Standard Chat Item
               const lastMsg = getLastMessage(chat);
               if (lastMsg) {
                 displayTime = lastMsg.timestamp;
@@ -435,7 +428,6 @@ const ChatList: React.FC = () => {
               }
             }
 
-            // Unread logic (only for generic chat items, not search results usually, but keeps consistent)
             const lastMsg = getLastMessage(chat);
             const unread =
               !highlight &&
