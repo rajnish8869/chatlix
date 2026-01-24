@@ -520,7 +520,7 @@ const ChatDetail: React.FC = () => {
   const otherUser = contacts.find((c) => c.user_id === otherUserId);
   const isOtherOnline = otherUser?.status === "online";
   
-  const chatImage = currentChat?.type === 'private' ? otherUser?.profile_picture : undefined;
+  const chatImage = currentChat?.type === 'group' ? currentChat.group_image : otherUser?.profile_picture;
 
   useEffect(() => {
     const handleResize = () =>

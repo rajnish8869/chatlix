@@ -106,7 +106,8 @@ export const chatService = {
             status: 'online',
             last_seen: new Date().toISOString(),
             is_blocked: false,
-            enable_groups: true
+            enable_groups: true,
+            blocked_users: []
          };
          await setDoc(userDocRef, newUser);
          return success(newUser);
@@ -129,7 +130,8 @@ export const chatService = {
           status: 'online',
           last_seen: new Date().toISOString(),
           is_blocked: false,
-          enable_groups: true
+          enable_groups: true,
+          blocked_users: []
       };
 
       await setDoc(doc(db, 'users', uid), newUser);
@@ -214,6 +216,30 @@ export const chatService = {
           });
       } catch (e) {
           console.error("Failed to set offline", e);
+      }
+  },
+
+  // --- BLOCKING ---
+
+  blockUser: async (currentUserId: string, targetUserId: string) => {
+      try {
+          await updateDoc(doc(db, 'users', currentUserId), {
+              blocked_users: arrayUnion(targetUserId)
+          });
+      } catch (e) {
+          console.error("Failed to block user", e);
+          throw e;
+      }
+  },
+
+  unblockUser: async (currentUserId: string, targetUserId: string) => {
+      try {
+          await updateDoc(doc(db, 'users', currentUserId), {
+              blocked_users: arrayRemove(targetUserId)
+          });
+      } catch (e) {
+          console.error("Failed to unblock user", e);
+          throw e;
       }
   },
 

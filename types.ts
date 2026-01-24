@@ -5,11 +5,12 @@ export interface User {
   email: string;
   status: string;
   last_seen: string;
-  is_blocked: boolean;
+  is_blocked: boolean; // Admin block status
   publicKey?: string; // Base64 encoded JWK public key
   privateKey?: string; // Base64 encoded JWK private key (Backup for multi-device)
   enable_groups?: boolean;
   profile_picture?: string; // Base64 Data URL
+  blocked_users?: string[]; // Array of User IDs blocked by this user
 }
 
 export interface Chat {

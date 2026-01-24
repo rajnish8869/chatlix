@@ -57,6 +57,8 @@ interface DataContextType {
   updateGroupInfo: (chatId: string, name?: string, imageFile?: File) => Promise<void>;
   addGroupMember: (chatId: string, newUserId: string) => Promise<void>;
   removeGroupMember: (chatId: string, userIdToRemove: string) => Promise<void>;
+  blockUser: (targetUserId: string) => Promise<void>;
+  unblockUser: (targetUserId: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -163,14 +165,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       chats.forEach(chat => {
           if (!typingUnsubs.current[chat.chat_id]) {
               typingUnsubs.current[chat.chat_id] = chatService.subscribeToChatTyping(chat.chat_id, (userIds) => {
+                  // FILTERING: Remove blocked users from typing status
+                  const blocked = user?.blocked_users || [];
+                  const filteredIds = userIds.filter(id => !blocked.includes(id));
+                  
                   setTypingStatusState(prev => ({
                       ...prev,
-                      [chat.chat_id]: userIds
+                      [chat.chat_id]: filteredIds
                   }));
               });
           }
       });
-  }, [chats]);
+  }, [chats, user?.blocked_users]); // Re-run if blocked users change
 
   // Combine Firestore Profiles + RTDB Presence
   useEffect(() => {
@@ -239,7 +245,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (chat.last_message && 
                 chat.last_message.sender_id !== user.user_id && 
                 chat.last_message.status === 'sent') {
-                 chatService.markChatDelivered(chat.chat_id, user.user_id);
+                 // Don't mark delivered if blocked? 
+                 // It's acceptable to not ack delivery for blocked users.
+                 if (!user.blocked_users?.includes(chat.last_message.sender_id)) {
+                    chatService.markChatDelivered(chat.chat_id, user.user_id);
+                 }
             }
         });
     }) as UnsubscribeFunc;
@@ -260,6 +270,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
     }
 
+    // Force refresh message listeners if blocked list changes
+    // This ensures existing listeners update their filter logic
+    Object.keys(messageUnsubs.current).forEach(chatId => {
+        const unsub = messageUnsubs.current[chatId];
+        if (typeof unsub === 'function') unsub();
+        delete messageUnsubs.current[chatId];
+        loadMessages(chatId);
+    });
+
     return () => {
         if (chatsUnsub.current) chatsUnsub.current();
         if (contactsUnsub.current) contactsUnsub.current();
@@ -271,7 +290,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
              if (typeof unsub === 'function') unsub();
         });
     };
-  }, [user]);
+  }, [user]); // Re-run everything when user (including blocked_users) changes
 
   // Retrieve 1-on-1 Shared Secret
   const getSharedKey = async (otherUserId: string): Promise<CryptoKey | null> => {
@@ -437,18 +456,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (messageUnsubs.current[chatId]) return;
 
     messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 50, (incomingMsgs) => {
+        // FILTERING: Remove messages from blocked users
+        const blocked = user?.blocked_users || [];
+        const filteredMsgs = incomingMsgs.filter(m => !blocked.includes(m.sender_id));
+
         setMessages(prev => {
             const currentMsgs = prev[chatId] || [];
             const msgMap = new Map();
             currentMsgs.forEach(m => msgMap.set(m.message_id, m));
-            incomingMsgs.forEach(m => msgMap.set(m.message_id, m));
+            filteredMsgs.forEach(m => msgMap.set(m.message_id, m));
+            
+            // Remove any messages that are now blocked (in case they were in state)
+            for (const [id, m] of msgMap.entries()) {
+                if (blocked.includes(m.sender_id)) {
+                    msgMap.delete(id);
+                }
+            }
+
             const merged = Array.from(msgMap.values()).sort((a: Message, b: Message) => 
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             );
             return { ...prev, [chatId]: merged };
         });
     }) as UnsubscribeFunc;
-  }, [user]);
+  }, [user]); // Re-create subscription logic if user (blocks) changes
 
   const loadMoreMessages = async (chatId: string) => {
       if (loadingHistory[chatId]) return;
@@ -462,7 +493,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
           const res = await chatService.fetchHistory(chatId, oldestMsg.timestamp);
           if (res.success && res.data && res.data.length > 0) {
-              const historyMsgs = res.data;
+              // FILTERING: Remove blocked users from history
+              const blocked = user?.blocked_users || [];
+              const historyMsgs = res.data.filter(m => !blocked.includes(m.sender_id));
+
               setMessages(prev => {
                   const current = prev[chatId] || [];
                   const msgMap = new Map();
@@ -705,13 +739,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       groupKeysCache.current[chatId] = newGroupKey;
   };
 
+  // --- BLOCKING ---
+
+  const blockUser = async (targetUserId: string) => {
+      if(!user) return;
+      await chatService.blockUser(user.user_id, targetUserId);
+      // NOTE: The update will trigger the auth/user effect, which will rebuild filters automatically
+  };
+
+  const unblockUser = async (targetUserId: string) => {
+      if(!user) return;
+      await chatService.unblockUser(user.user_id, targetUserId);
+  };
+
   return (
     <DataContext.Provider value={{ 
         chats, messages, settings, syncing, isOffline, contacts, typingStatus,
         refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, sendAudio, retryFailedMessages, 
         createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
         deleteChats, deleteMessages, getMessage,
-        updateGroupInfo, addGroupMember, removeGroupMember
+        updateGroupInfo, addGroupMember, removeGroupMember,
+        blockUser, unblockUser
     }}>
       {children}
     </DataContext.Provider>

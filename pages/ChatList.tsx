@@ -1,4 +1,5 @@
 
+
 import React, { useEffect, useState, useRef } from "react";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
@@ -232,7 +233,7 @@ const ChatList: React.FC = () => {
   };
   
   const getChatImage = (chat: Chat) => {
-      if (chat.type === 'group') return undefined;
+      if (chat.type === 'group') return chat.group_image;
       const otherId = chat.participants.find(id => id !== user?.user_id);
       if (otherId) {
           const contact = contacts.find(c => c.user_id === otherId);
