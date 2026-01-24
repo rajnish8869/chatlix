@@ -382,6 +382,8 @@ const ChatDetail: React.FC = () => {
   );
   const otherUser = contacts.find((c) => c.user_id === otherUserId);
   const isOtherOnline = otherUser?.status === "online";
+  
+  const chatImage = currentChat?.type === 'private' ? otherUser?.profile_picture : undefined;
 
   useEffect(() => {
     const handleResize = () =>
@@ -703,6 +705,7 @@ const ChatDetail: React.FC = () => {
             <div className="flex items-center gap-2.5">
               <Avatar
                 name={getChatName()}
+                src={chatImage}
                 size="sm"
                 online={
                   currentChat?.type === "private" ? isOtherOnline : undefined

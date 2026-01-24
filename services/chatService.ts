@@ -36,6 +36,45 @@ import { auth, db, rtdb } from './firebase';
 const success = <T>(data?: T): ApiResponse<T> => ({ success: true, data });
 const fail = <T>(error: string): ApiResponse<T> => ({ success: false, error });
 
+// Helper for image compression
+const compressImage = (file: File, maxWidth: number, maxHeight: number, quality: number): Promise<string> => {
+    return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = (e) => {
+              const img = new Image();
+              img.src = e.target?.result as string;
+              img.onload = () => {
+                  const canvas = document.createElement('canvas');
+                  let width = img.width;
+                  let height = img.height;
+
+                  if (width > height) {
+                      if (width > maxWidth) {
+                          height *= maxWidth / width;
+                          width = maxWidth;
+                      }
+                  } else {
+                      if (height > maxHeight) {
+                          width *= maxHeight / height;
+                          height = maxHeight;
+                      }
+                  }
+
+                  canvas.width = width;
+                  canvas.height = height;
+                  const ctx = canvas.getContext('2d');
+                  ctx?.drawImage(img, 0, 0, width, height);
+                  
+                  const dataUrl = canvas.toDataURL('image/jpeg', quality); 
+                  resolve(dataUrl);
+              };
+              img.onerror = (err) => reject(new Error("Failed to load image"));
+          };
+          reader.onerror = (err) => reject(new Error("Failed to read file"));
+      });
+};
+
 export const chatService = {
   
   // --- AUTH ---
@@ -127,6 +166,20 @@ export const chatService = {
           }
       } catch (e) {
           console.error("Failed to update profile", e);
+          throw e;
+      }
+  },
+  
+  uploadProfilePicture: async (userId: string, file: File): Promise<string> => {
+      try {
+          // Compress specifically for profile pictures (smaller)
+          const dataUrl = await compressImage(file, 500, 500, 0.6);
+          await updateDoc(doc(db, 'users', userId), {
+              profile_picture: dataUrl
+          });
+          return dataUrl;
+      } catch (e) {
+          console.error("Failed to upload profile picture", e);
           throw e;
       }
   },
@@ -375,44 +428,7 @@ export const chatService = {
   },
 
   uploadImage: async (chatId: string, file: File): Promise<string> => {
-      return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.readAsDataURL(file);
-          reader.onload = (e) => {
-              const img = new Image();
-              img.src = e.target?.result as string;
-              img.onload = () => {
-                  const canvas = document.createElement('canvas');
-                  let width = img.width;
-                  let height = img.height;
-                  
-                  const MAX_WIDTH = 800;
-                  const MAX_HEIGHT = 800;
-
-                  if (width > height) {
-                      if (width > MAX_WIDTH) {
-                          height *= MAX_WIDTH / width;
-                          width = MAX_WIDTH;
-                      }
-                  } else {
-                      if (height > MAX_HEIGHT) {
-                          width *= MAX_HEIGHT / height;
-                          height = MAX_HEIGHT;
-                      }
-                  }
-
-                  canvas.width = width;
-                  canvas.height = height;
-                  const ctx = canvas.getContext('2d');
-                  ctx?.drawImage(img, 0, 0, width, height);
-                  
-                  const dataUrl = canvas.toDataURL('image/jpeg', 0.5); 
-                  resolve(dataUrl);
-              };
-              img.onerror = (err) => reject(new Error("Failed to load image"));
-          };
-          reader.onerror = (err) => reject(new Error("Failed to read file"));
-      });
+      return compressImage(file, 800, 800, 0.5);
   },
 
   sendMessage: async (

@@ -83,6 +83,7 @@ const ChatInfo: React.FC = () => {
               >
                 <Avatar
                   name={p.username}
+                  src={p.profile_picture}
                   size="md"
                   online={p.status === "online"}
                 />

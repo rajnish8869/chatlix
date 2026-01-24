@@ -1,18 +1,21 @@
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
 import { useTheme, Theme } from "../context/ThemeContext";
 import { TopBar, Button, Icons, Input, Avatar } from "../components/AndroidUI";
 
 const Settings: React.FC = () => {
-  const { user, logout, updateName, toggleGroupChats } = useAuth();
+  const { user, logout, updateName, toggleGroupChats, updateProfilePicture } = useAuth();
   const { isOffline } = useData();
   const { theme, setTheme } = useTheme();
   const [loggingOut, setLoggingOut] = useState(false);
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const themes: { id: Theme; name: string; bg: string }[] = [
     { id: "midnight", name: "Midnight", bg: "#0b101a" },
@@ -36,6 +39,21 @@ const Settings: React.FC = () => {
     setIsEditingName(false);
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          setIsUploading(true);
+          try {
+             await updateProfilePicture(e.target.files[0]);
+          } catch (error) {
+              console.error("Failed to upload profile picture");
+          } finally {
+              setIsUploading(false);
+              // Reset input
+              if(fileInputRef.current) fileInputRef.current.value = "";
+          }
+      }
+  };
+
   const areGroupsEnabled = user?.enable_groups ?? true;
 
   return (
@@ -49,11 +67,30 @@ const Settings: React.FC = () => {
         <div className="bg-gradient-to-br from-surface/80 to-surface/40 rounded-[32px] p-8 border border-white/10 shadow-lg flex flex-col items-center text-center relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/10 to-transparent opacity-50" />
 
-          <div className="relative z-10 mb-5">
+          <div 
+             className="relative z-10 mb-5 group cursor-pointer"
+             onClick={() => !isUploading && fileInputRef.current?.click()}
+          >
             <Avatar
               name={user?.username || "?"}
+              src={user?.profile_picture}
               size="xl"
               online={!isOffline}
+            />
+            {/* Overlay for upload */}
+            <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                {isUploading ? (
+                     <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                    <Icons.Camera className="w-8 h-8 text-white" />
+                )}
+            </div>
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileChange} 
+                hidden 
+                accept="image/*"
             />
           </div>
 

@@ -156,6 +156,7 @@ const NewChat: React.FC = () => {
                 >
                   <Avatar
                     name={contact.username}
+                    src={contact.profile_picture}
                     size="md"
                     online={contact.status === "online"}
                   />

@@ -9,6 +9,7 @@ export interface User {
   publicKey?: string; // Base64 encoded JWK public key
   privateKey?: string; // Base64 encoded JWK private key (Backup for multi-device)
   enable_groups?: boolean;
+  profile_picture?: string; // Base64 Data URL
 }
 
 export interface Chat {

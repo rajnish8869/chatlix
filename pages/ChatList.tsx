@@ -230,6 +230,16 @@ const ChatList: React.FC = () => {
     }
     return chat.name || "Chat";
   };
+  
+  const getChatImage = (chat: Chat) => {
+      if (chat.type === 'group') return undefined;
+      const otherId = chat.participants.find(id => id !== user?.user_id);
+      if (otherId) {
+          const contact = contacts.find(c => c.user_id === otherId);
+          return contact?.profile_picture;
+      }
+      return undefined;
+  };
 
   const handleItemClick = (item: ListItem) => {
     if (isSelectionMode) {
@@ -393,6 +403,7 @@ const ChatList: React.FC = () => {
           itemContent={(index, item) => {
             const chat = item.chat;
             const chatName = getChatName(chat);
+            const chatImage = getChatImage(chat);
             const isSelected = selectedChatIds.has(chat.chat_id);
             const typing = isTyping(chat.chat_id);
 
@@ -457,6 +468,7 @@ const ChatList: React.FC = () => {
                       ) : (
                         <Avatar
                           name={chatName}
+                          src={chatImage}
                           size="md"
                           online={chat.type === "private" ? undefined : false}
                           showStatus={chat.type === "private"}

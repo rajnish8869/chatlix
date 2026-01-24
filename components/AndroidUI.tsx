@@ -275,17 +275,24 @@ export const Icons = {
     <svg fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props} className={`w-6 h-6 ${props.className || ""}`}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
     </svg>
+  ),
+  Camera: (props: React.SVGProps<SVGSVGElement>) => (
+    <svg fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props} className={`w-6 h-6 ${props.className || ""}`}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+    </svg>
   )
 };
 
 // --- Avatar Component ---
 export const Avatar: React.FC<{
   name: string;
+  src?: string;
   size?: "sm" | "md" | "lg" | "xl";
   online?: boolean;
   className?: string;
   showStatus?: boolean;
-}> = ({ name, size = "md", online, className, showStatus = true }) => {
+}> = ({ name, src, size = "md", online, className, showStatus = true }) => {
   const sizeClasses = {
     sm: "w-9 h-9 text-xs",
     md: "w-12 h-12 text-base",
@@ -310,11 +317,15 @@ export const Avatar: React.FC<{
   return (
     <div className={`relative ${className}`}>
       <div
-        className={`${sizeClasses[size]} rounded-full bg-gradient-to-br ${gradient} p-[2px] shadow-sm`}
+        className={`${sizeClasses[size]} rounded-full bg-gradient-to-br ${gradient} p-[2px] shadow-sm overflow-hidden`}
       >
-        <div className="w-full h-full rounded-full bg-surface/10 backdrop-blur-sm flex items-center justify-center font-bold text-white border border-white/20">
-          {name.charAt(0).toUpperCase()}
-        </div>
+        {src ? (
+             <img src={src} alt={name} className="w-full h-full rounded-full object-cover border border-white/10" />
+        ) : (
+            <div className="w-full h-full rounded-full bg-surface/10 backdrop-blur-sm flex items-center justify-center font-bold text-white border border-white/20">
+            {name.charAt(0).toUpperCase()}
+            </div>
+        )}
       </div>
       {showStatus && online !== undefined && (
         <div

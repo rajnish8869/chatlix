@@ -16,6 +16,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateName: (name: string) => Promise<void>;
   toggleGroupChats: () => Promise<void>;
+  updateProfilePicture: (file: File) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -88,7 +89,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  is_blocked: remoteData?.is_blocked || false,
                  publicKey: pubKey,
                  privateKey: privKey, // We keep it in state too just in case
-                 enable_groups: remoteData?.enable_groups !== undefined ? remoteData.enable_groups : true
+                 enable_groups: remoteData?.enable_groups !== undefined ? remoteData.enable_groups : true,
+                 profile_picture: remoteData?.profile_picture
             };
 
             setUser(finalUser);
@@ -130,8 +132,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(prev => prev ? { ...prev, enable_groups: newValue } : null);
   };
 
+  const updateProfilePicture = async (file: File) => {
+      if (!user) return;
+      const url = await chatService.uploadProfilePicture(user.user_id, file);
+      setUser(prev => prev ? { ...prev, profile_picture: url } : null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateName, toggleGroupChats }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateName, toggleGroupChats, updateProfilePicture }}>
       {children}
     </AuthContext.Provider>
   );
