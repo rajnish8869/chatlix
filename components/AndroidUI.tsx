@@ -1,5 +1,7 @@
 
 import React, { useEffect, useState } from "react";
+// @ts-ignore
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 // --- Icons (Refined Stroke & Size) ---
 // Now accepting SVGProps to allow custom classes (colors, sizes)
@@ -259,6 +261,21 @@ export const Icons = {
       />
     </svg>
   ),
+  ZoomIn: (props: React.SVGProps<SVGSVGElement>) => (
+    <svg fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props} className={`w-6 h-6 ${props.className || ""}`}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
+    </svg>
+  ),
+  ZoomOut: (props: React.SVGProps<SVGSVGElement>) => (
+    <svg fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props} className={`w-6 h-6 ${props.className || ""}`}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM7.5 10.5h6" />
+    </svg>
+  ),
+  Reset: (props: React.SVGProps<SVGSVGElement>) => (
+    <svg fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props} className={`w-6 h-6 ${props.className || ""}`}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+    </svg>
+  )
 };
 
 // --- Avatar Component ---
@@ -591,16 +608,47 @@ export const ImageViewer: React.FC<{
     >
       <button
         onClick={onClose}
-        className="absolute top-8 right-6 p-2 bg-white/20 rounded-full text-white hover:bg-white/30 transition-colors z-[160]"
+        className="absolute top-8 right-6 p-2 bg-white/10 backdrop-blur-md rounded-full text-white hover:bg-white/20 transition-colors z-[160]"
       >
         <Icons.Close className="w-5 h-5" />
       </button>
-      <img
-        src={src}
-        alt="Full view"
-        className="max-w-full max-h-screen object-contain animate-scale-in p-4"
-        onClick={(e) => e.stopPropagation()}
-      />
+
+      <div onClick={(e) => e.stopPropagation()} className="w-full h-full flex flex-col justify-center">
+        <TransformWrapper
+          initialScale={1}
+          minScale={1}
+          maxScale={5}
+          centerOnInit={true}
+          alignmentAnimation={{ sizeX: 0, sizeY: 0 }}
+        >
+          {({ zoomIn, zoomOut, resetTransform }) => (
+            <>
+              <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[160] flex gap-4 bg-black/50 backdrop-blur-md px-6 py-3 rounded-full border border-white/10">
+                <button onClick={() => zoomOut()} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white">
+                    <Icons.ZoomOut className="w-6 h-6" />
+                </button>
+                <button onClick={() => resetTransform()} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white">
+                    <Icons.Reset className="w-6 h-6" />
+                </button>
+                <button onClick={() => zoomIn()} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white">
+                    <Icons.ZoomIn className="w-6 h-6" />
+                </button>
+              </div>
+
+              <TransformComponent
+                wrapperClass="!w-full !h-full"
+                contentClass="!w-full !h-full flex items-center justify-center"
+              >
+                <img
+                  src={src}
+                  alt="Full view"
+                  className="max-w-full max-h-screen object-contain animate-scale-in"
+                />
+              </TransformComponent>
+            </>
+          )}
+        </TransformWrapper>
+      </div>
     </div>
   );
 };
