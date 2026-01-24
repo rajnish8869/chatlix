@@ -94,7 +94,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                      privateKey: privKey || undefined, 
                      enable_groups: data?.enable_groups ?? true,
                      profile_picture: data?.profile_picture,
-                     blocked_users: data?.blocked_users || [] // Real-time update here
+                     blocked_users: data?.blocked_users || [], // Real-time update here
+                     chat_wallpapers: data?.chat_wallpapers
                  };
                  
                  setUser(finalUser);
