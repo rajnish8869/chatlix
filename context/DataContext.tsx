@@ -1,4 +1,6 @@
 
+
+
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Chat, Message, AppSettings, User, ApiResponse } from '../types';
 import { useAuth } from './AuthContext';
@@ -58,6 +60,7 @@ interface DataContextType {
   removeGroupMember: (chatId: string, userIdToRemove: string) => Promise<void>;
   blockUser: (targetUserId: string) => Promise<void>;
   unblockUser: (targetUserId: string) => Promise<void>;
+  setChatWallpaper: (chatId: string, wallpaper: File | string | null, isGroupLevel: boolean, isLocked: boolean) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -706,6 +709,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await chatService.unblockUser(user.user_id, targetUserId);
   };
 
+  // --- WALLPAPERS ---
+
+  const setChatWallpaper = async (chatId: string, wallpaper: File | string | null, isGroupLevel: boolean, isLocked: boolean) => {
+      if (!user) return;
+      
+      let val: string | null = null;
+      if (wallpaper instanceof File) {
+          val = await chatService.uploadWallpaper(wallpaper);
+      } else {
+          val = wallpaper;
+      }
+      
+      await chatService.updateWallpaper(chatId, user.user_id, val, isGroupLevel, isLocked);
+  };
+
   return (
     <DataContext.Provider value={{ 
         chats, messages, settings, syncing, isOffline, contacts, typingStatus,
@@ -713,7 +731,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
         deleteChats, deleteMessages, getMessage,
         updateGroupInfo, addGroupMember, removeGroupMember,
-        blockUser, unblockUser
+        blockUser, unblockUser,
+        setChatWallpaper
     }}>
       {children}
     </DataContext.Provider>
