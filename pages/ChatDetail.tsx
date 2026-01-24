@@ -460,6 +460,9 @@ const ChatDetail: React.FC = () => {
   // and user releases the button before recording starts.
   const isPressingRef = useRef(false);
 
+  // Check if running on Native Android/iOS via Capacitor
+  const isNative = (window as any).Capacitor?.isNative;
+
   // Scroll & Highlight State
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
   const [pendingScrollTo, setPendingScrollTo] = useState<{
@@ -1132,10 +1135,11 @@ const ChatDetail: React.FC = () => {
                 style={{ height: "auto" }}
               />
               
-              {inputText.trim() ? (
+              {inputText.trim() || !isNative ? (
                   <button
                     onClick={handleSend}
-                    className="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 bg-primary text-white shadow-glow scale-100"
+                    disabled={!inputText.trim()}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${inputText.trim() ? "bg-primary text-white shadow-glow scale-100" : "bg-surface-highlight text-text-sub opacity-50 cursor-not-allowed"}`}
                   >
                     <Icons.Send className="w-5 h-5" />
                   </button>
