@@ -1,4 +1,6 @@
 
+
+
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -298,7 +300,7 @@ const MessageItem = React.memo(
     return (
       <SwipeableMessage onReply={() => onReply(msg)} isMe={isMe}>
         <div
-          className={`px-3 animate-fade-in transition-all duration-300 ${isSelected ? "bg-primary/10 -mx-3 px-6 py-2 rounded-xl" : ""}`}
+          className={`px-3 animate-fade-in transition-all duration-300 relative z-10 ${isSelected ? "bg-primary/10 -mx-3 px-6 py-2 rounded-xl" : ""}`}
         >
           {showDate && (
             <div className="flex justify-center py-4">
@@ -323,7 +325,7 @@ const MessageItem = React.memo(
             onClick={() => onClick(msg)}
           >
             {senderName && !isBlocked && (
-              <span className="text-[11px] font-bold mb-1.5 ml-3 text-primary opacity-90">
+              <span className="text-[11px] font-bold mb-1.5 ml-3 text-primary opacity-90 drop-shadow-sm">
                 {senderName}
               </span>
             )}
@@ -524,19 +526,22 @@ const ChatDetail: React.FC = () => {
   const otherUser = contacts.find((c) => c.user_id === otherUserId);
   
   // --- BLOCKING LOGIC ---
-  // Only restrict sending if it is a PRIVATE chat
   const iBlockedThem = otherUserId ? user?.blocked_users?.includes(otherUserId) : false;
   const theyBlockedMe = otherUser?.blocked_users?.includes(user?.user_id || '');
   const isBlocked = currentChat?.type === 'private' && (iBlockedThem || theyBlockedMe);
 
-  // Mask status if I am blocked (only in private chat context usually, but if I blocked them I shouldn't see it either)
   const isOtherOnline = !theyBlockedMe && !iBlockedThem && otherUser?.status === "online";
   
-  // Mask image if I am blocked or I blocked them (consistent privacy)
-  // In groups, this logic might need to be relaxed or specific per message, but for the TopBar:
   const chatImage = (currentChat?.type === 'private' && (theyBlockedMe || iBlockedThem))
       ? undefined 
       : (currentChat?.type === 'group' ? currentChat.group_image : otherUser?.profile_picture);
+
+  // --- WALLPAPER LOGIC ---
+  const personalWallpaper = (user?.chat_wallpapers && chatId) ? user.chat_wallpapers[chatId] : null;
+  const groupWallpaper = currentChat?.wallpaper;
+  
+  // Priority: Personal Override > Group Shared > Default
+  const activeWallpaper = personalWallpaper || groupWallpaper;
 
   useEffect(() => {
     const handleResize = () =>
@@ -824,8 +829,6 @@ const ChatDetail: React.FC = () => {
   const getChatName = () => {
     if (currentChat?.type === "group" && currentChat.name)
       return currentChat.name;
-    // Mask name if I am blocked? Request says "personal details", name is usually essential to know WHO it is.
-    // Keeping name for context, but masking profile pic and status.
     return otherUser ? otherUser.username : "Chat";
   };
 
@@ -955,6 +958,26 @@ const ChatDetail: React.FC = () => {
       className="fixed inset-0 flex flex-col bg-background overflow-hidden"
       style={{ height: `${viewportHeight}px` }}
     >
+        {/* --- Wallpaper Layer --- */}
+        {activeWallpaper && (
+            <div className="absolute inset-0 z-0 pointer-events-none">
+                {activeWallpaper.type === 'color' && (
+                    <div className="w-full h-full" style={{ backgroundColor: activeWallpaper.value }} />
+                )}
+                {activeWallpaper.type === 'gradient' && (
+                    <div className="w-full h-full" style={{ background: activeWallpaper.value }} />
+                )}
+                {activeWallpaper.type === 'image' && (
+                    <img src={activeWallpaper.value} alt="Background" className="w-full h-full object-cover" />
+                )}
+                {/* Dimming Overlay for readability */}
+                <div 
+                    className="absolute inset-0 bg-background"
+                    style={{ opacity: activeWallpaper.opacity !== undefined ? (1 - activeWallpaper.opacity) : 0.4 }} 
+                />
+            </div>
+        )}
+
       {isSelectionMode ? (
         <TopBar
           className="z-30 flex-shrink-0 bg-surface/80 backdrop-blur border-b border-primary/20"
@@ -1026,7 +1049,7 @@ const ChatDetail: React.FC = () => {
         />
       )}
 
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative z-10">
         <Virtuoso
           ref={virtuosoRef}
           data={chatMessages}

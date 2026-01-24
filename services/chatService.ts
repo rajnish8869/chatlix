@@ -1,6 +1,7 @@
 
 
-import { User, Chat, Message, AppSettings, ApiResponse, LogEvent } from '../types';
+
+import { User, Chat, Message, AppSettings, ApiResponse, LogEvent, Wallpaper } from '../types';
 import { 
     collection, 
     doc, 
@@ -239,6 +240,43 @@ export const chatService = {
           console.error("Failed to unblock user", e);
           throw e;
       }
+  },
+
+  // --- WALLPAPERS ---
+
+  setGroupWallpaper: async (chatId: string, wallpaper: Wallpaper | null) => {
+    try {
+        if (wallpaper) {
+            await updateDoc(doc(db, 'chats', chatId), { wallpaper });
+        } else {
+            await updateDoc(doc(db, 'chats', chatId), { wallpaper: deleteField() });
+        }
+    } catch (e) {
+        console.error("Failed to set group wallpaper", e);
+        throw e;
+    }
+  },
+
+  setPersonalWallpaper: async (userId: string, chatId: string, wallpaper: Wallpaper | null) => {
+      try {
+          if (wallpaper) {
+              await updateDoc(doc(db, 'users', userId), {
+                  [`chat_wallpapers.${chatId}`]: wallpaper
+              });
+          } else {
+              await updateDoc(doc(db, 'users', userId), {
+                  [`chat_wallpapers.${chatId}`]: deleteField()
+              });
+          }
+      } catch (e) {
+          console.error("Failed to set personal wallpaper", e);
+          throw e;
+      }
+  },
+
+  uploadWallpaperImage: async (file: File): Promise<string> => {
+      // Wallpaper compression (Higher quality than thumbnails, larger max dim)
+      return compressImage(file, 1920, 1920, 0.8);
   },
 
   // --- CONTACTS ---

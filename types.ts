@@ -12,6 +12,7 @@ export interface User {
   enable_groups?: boolean;
   profile_picture?: string; // Base64 Data URL
   blocked_users?: string[]; // Array of User IDs blocked by this user
+  chat_wallpapers?: Record<string, Wallpaper>; // Map of chatId -> Wallpaper (Personal overrides)
 }
 
 export interface Chat {
@@ -27,6 +28,13 @@ export interface Chat {
   // E2EE for Groups
   key_issuer_id?: string; // The user who generated the group key
   encrypted_keys?: Record<string, string>; // Map of userID -> Encrypted Group Key (Base64)
+  wallpaper?: Wallpaper; // Shared wallpaper for groups
+}
+
+export interface Wallpaper {
+  type: 'image' | 'color' | 'gradient';
+  value: string; // URL, Hex Code, or CSS Gradient string
+  opacity?: number; // 0.1 to 1.0 (for readability adjustment)
 }
 
 export interface Message {

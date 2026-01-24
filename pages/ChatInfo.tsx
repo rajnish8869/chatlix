@@ -1,10 +1,29 @@
 
+
+
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
 import { TopBar, Icons, Avatar, ConfirmationModal, BottomSheet, Input } from "../components/AndroidUI";
-import { User } from "../types";
+import { User, Wallpaper } from "../types";
+
+const GRADIENTS = [
+    "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    "linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)",
+    "linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%)",
+    "linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)",
+    "linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)",
+    "linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%)",
+    "linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)",
+    "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+];
+
+const COLORS = [
+    "#000000", "#1a1a1a", "#2d3748", "#4a5568", 
+    "#718096", "#e53e3e", "#dd6b20", "#38a169", 
+    "#3182ce", "#805ad5", "#d53f8c", "#ffffff"
+];
 
 const ChatInfo: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
@@ -18,7 +37,9 @@ const ChatInfo: React.FC = () => {
       removeGroupMember,
       deleteChats, 
       blockUser,
-      unblockUser
+      unblockUser,
+      setWallpaper,
+      uploadWallpaper
   } = useData();
   const { user } = useAuth();
   
@@ -28,6 +49,11 @@ const ChatInfo: React.FC = () => {
   const [editName, setEditName] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Wallpaper State
+  const wallpaperInputRef = useRef<HTMLInputElement>(null);
+  const [showWallpaperModal, setShowWallpaperModal] = useState(false);
+  const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
@@ -87,7 +113,6 @@ const ChatInfo: React.FC = () => {
   const iBlockedThem = otherPerson && user?.blocked_users?.includes(otherPerson.user_id);
   const theyBlockedMe = otherPerson?.blocked_users?.includes(user?.user_id || '');
   
-  // Mask profile details if they blocked me
   const displayProfilePic = theyBlockedMe ? undefined : (currentChat.group_image || (currentChat.type === 'private' ? otherPerson?.profile_picture : undefined));
   const displayName = currentChat.name || "Conversation";
 
@@ -192,6 +217,35 @@ const ChatInfo: React.FC = () => {
       }
   };
 
+  // --- WALLPAPER HANDLERS ---
+  const applyWallpaper = async (wallpaper: Wallpaper | null) => {
+      setLoadingAction(true);
+      const isShared = isGroup && isAdmin; // If group and admin, share it. Otherwise local.
+      // NOTE: This logic could be refined (e.g., prompt user if they want to share or keep local)
+      // For now: Groups share if admin, Privates are local.
+      try {
+          await setWallpaper(chatId!, wallpaper, isShared);
+          setShowWallpaperModal(false);
+      } catch (e) {
+          console.error(e);
+      }
+      setLoadingAction(false);
+  };
+
+  const handleWallpaperUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          setUploadingWallpaper(true);
+          try {
+              const url = await uploadWallpaper(e.target.files[0]);
+              await applyWallpaper({ type: 'image', value: url, opacity: 0.7 });
+          } catch (e) {
+              console.error("Failed to upload wallpaper", e);
+          }
+          setUploadingWallpaper(false);
+          if (wallpaperInputRef.current) wallpaperInputRef.current.value = "";
+      }
+  };
+
   return (
     <div className="flex-1 bg-background text-text-main h-full flex flex-col overflow-hidden">
       <TopBar
@@ -264,6 +318,25 @@ const ChatInfo: React.FC = () => {
 
         <div className="px-5 max-w-2xl mx-auto space-y-6">
           
+          {/* Wallpaper Section */}
+          <button 
+              onClick={() => setShowWallpaperModal(true)}
+              className="w-full bg-surface rounded-[24px] p-5 flex items-center justify-between border border-white/10 hover:bg-surface-highlight/30 transition-colors shadow-sm"
+          >
+              <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-purple-500/20 rounded-xl text-purple-400">
+                      <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                      </svg>
+                  </div>
+                  <div className="text-left">
+                      <h3 className="font-bold text-text-main">Chat Wallpaper</h3>
+                      <p className="text-xs text-text-sub opacity-70">Customise chat background</p>
+                  </div>
+              </div>
+              <Icons.ChevronDown className="w-5 h-5 text-text-sub -rotate-90" />
+          </button>
+
           {/* Members Section */}
           <div>
               <div className="flex items-center justify-between mb-4 px-1">
@@ -400,6 +473,72 @@ const ChatInfo: React.FC = () => {
                   )}
               </div>
           </div>
+      </BottomSheet>
+
+      <BottomSheet isOpen={showWallpaperModal} onClose={() => setShowWallpaperModal(false)}>
+        <div className="flex flex-col gap-5 max-h-[80vh]">
+            <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-text-main">Set Wallpaper</h3>
+                <button 
+                    onClick={() => applyWallpaper(null)}
+                    className="text-xs font-bold text-text-sub opacity-60 hover:opacity-100 hover:text-danger uppercase tracking-wider"
+                >
+                    Reset to Default
+                </button>
+            </div>
+            
+            <div 
+                className="w-full h-24 rounded-2xl bg-surface-highlight border-2 border-dashed border-white/10 hover:border-primary/50 flex flex-col items-center justify-center cursor-pointer transition-colors relative overflow-hidden"
+                onClick={() => !uploadingWallpaper && wallpaperInputRef.current?.click()}
+            >
+                {uploadingWallpaper ? (
+                    <div className="flex items-center gap-2 text-primary animate-pulse">
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm font-bold">Uploading...</span>
+                    </div>
+                ) : (
+                    <>
+                        <Icons.Camera className="w-6 h-6 text-text-sub mb-1" />
+                        <span className="text-xs font-bold text-text-sub">Upload Image</span>
+                    </>
+                )}
+                <input type="file" ref={wallpaperInputRef} onChange={handleWallpaperUpload} accept="image/*" hidden />
+            </div>
+
+            <div>
+                <h4 className="text-xs font-bold text-text-sub uppercase tracking-wider mb-3">Gradients</h4>
+                <div className="grid grid-cols-4 gap-3">
+                    {GRADIENTS.map((g, i) => (
+                        <button 
+                            key={i}
+                            onClick={() => applyWallpaper({ type: 'gradient', value: g, opacity: 0.8 })}
+                            className="aspect-square rounded-xl shadow-sm hover:scale-105 transition-transform"
+                            style={{ background: g }}
+                        />
+                    ))}
+                </div>
+            </div>
+
+            <div>
+                <h4 className="text-xs font-bold text-text-sub uppercase tracking-wider mb-3">Solid Colors</h4>
+                <div className="grid grid-cols-6 gap-3">
+                    {COLORS.map((c, i) => (
+                        <button 
+                            key={i}
+                            onClick={() => applyWallpaper({ type: 'color', value: c, opacity: 0.9 })}
+                            className="aspect-square rounded-full shadow-sm hover:scale-110 transition-transform border border-white/10"
+                            style={{ backgroundColor: c }}
+                        />
+                    ))}
+                </div>
+            </div>
+            
+            {loadingAction && (
+                <div className="absolute inset-0 bg-surface/50 backdrop-blur-sm flex items-center justify-center rounded-[40px] z-50">
+                    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+            )}
+        </div>
       </BottomSheet>
 
       <ConfirmationModal 

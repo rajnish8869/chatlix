@@ -1,6 +1,8 @@
 
+
+
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
-import { Chat, Message, AppSettings, User, ApiResponse } from '../types';
+import { Chat, Message, AppSettings, User, ApiResponse, Wallpaper } from '../types';
 import { useAuth } from './AuthContext';
 import { chatService } from '../services/chatService';
 import { DEFAULT_SETTINGS } from '../constants';
@@ -58,6 +60,8 @@ interface DataContextType {
   removeGroupMember: (chatId: string, userIdToRemove: string) => Promise<void>;
   blockUser: (targetUserId: string) => Promise<void>;
   unblockUser: (targetUserId: string) => Promise<void>;
+  setWallpaper: (chatId: string, wallpaper: Wallpaper | null, isGroupShared: boolean) => Promise<void>;
+  uploadWallpaper: (file: File) => Promise<string>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -706,6 +710,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await chatService.unblockUser(user.user_id, targetUserId);
   };
 
+  // --- WALLPAPER ---
+
+  const setWallpaper = async (chatId: string, wallpaper: Wallpaper | null, isGroupShared: boolean) => {
+      if (!user) return;
+      if (isGroupShared) {
+          await chatService.setGroupWallpaper(chatId, wallpaper);
+      } else {
+          await chatService.setPersonalWallpaper(user.user_id, chatId, wallpaper);
+      }
+  };
+
+  const uploadWallpaper = async (file: File): Promise<string> => {
+      return chatService.uploadWallpaperImage(file);
+  };
+
   return (
     <DataContext.Provider value={{ 
         chats, messages, settings, syncing, isOffline, contacts, typingStatus,
@@ -713,7 +732,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
         deleteChats, deleteMessages, getMessage,
         updateGroupInfo, addGroupMember, removeGroupMember,
-        blockUser, unblockUser
+        blockUser, unblockUser,
+        setWallpaper, uploadWallpaper
     }}>
       {children}
     </DataContext.Provider>
