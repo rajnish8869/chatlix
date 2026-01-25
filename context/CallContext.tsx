@@ -58,6 +58,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     }
                 }
             });
+        }, (error) => {
+            console.error("Error listening for incoming calls:", error);
+            // This usually happens if permissions are missing. 
+            // We suppress the crash but the feature won't work until rules are fixed.
         });
 
         return () => unsubscribe();
@@ -105,11 +109,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 } else if (data?.status === 'ended' || data?.status === 'rejected') {
                     endCall(false); // don't update db again
                 }
+            }, (error) => {
+                console.error("Error listening to call updates:", error);
+                // If we lose permission or connection, end call gracefully locally
+                endCall(false); 
+                alert("Call failed: Permission denied or connection lost.");
             });
             
         } catch (e) {
             console.error("Failed to start call", e);
             setCallStatus('idle');
+            alert("Could not start call. Check camera/microphone permissions.");
         }
     };
 
@@ -135,6 +145,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (data?.status === 'ended') {
                     endCall(false);
                 }
+            }, (error) => {
+                console.error("Error listening to active call:", error);
             });
             
         } catch (e) {
