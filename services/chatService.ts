@@ -3,6 +3,7 @@
 
 
 
+
 import { User, Chat, Message, AppSettings, ApiResponse, LogEvent, Wallpaper } from '../types';
 import { 
     collection, 
@@ -144,6 +145,28 @@ export const chatService = {
     } catch (e: any) {
       return fail(e.message);
     }
+  },
+
+  // --- TOKEN MANAGEMENT (FCM) ---
+
+  saveDeviceToken: async (userId: string, token: string) => {
+      try {
+          await updateDoc(doc(db, 'users', userId), {
+              fcm_tokens: arrayUnion(token)
+          });
+      } catch (e) {
+          console.error("Failed to save device token", e);
+      }
+  },
+
+  removeDeviceToken: async (userId: string, token: string) => {
+      try {
+          await updateDoc(doc(db, 'users', userId), {
+              fcm_tokens: arrayRemove(token)
+          });
+      } catch (e) {
+          console.error("Failed to remove device token", e);
+      }
   },
 
   updateUserPublicKey: async (userId: string, publicKey: string) => {

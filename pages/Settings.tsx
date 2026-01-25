@@ -1,16 +1,21 @@
 
+
+
 import React, { useState, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
 import { useTheme, Theme } from "../context/ThemeContext";
 import { useSecurity } from "../context/SecurityContext";
+import { useNotifications } from "../context/NotificationContext";
 import { TopBar, Button, Icons, Input, Avatar } from "../components/AndroidUI";
+import { Capacitor } from '@capacitor/core';
 
 const Settings: React.FC = () => {
   const { user, logout, updateName, toggleGroupChats, updateProfilePicture } = useAuth();
   const { isOffline } = useData();
   const { theme, setTheme } = useTheme();
   const { isSupported, isBiometricEnabled, toggleBiometric } = useSecurity();
+  const { requestPermission, hasPermission, testNotification } = useNotifications();
   const [loggingOut, setLoggingOut] = useState(false);
 
   const [isEditingName, setIsEditingName] = useState(false);
@@ -169,12 +174,12 @@ const Settings: React.FC = () => {
           </div>
         </div>
 
-        {isSupported && (
-            <div>
-                <h3 className="text-xs font-bold text-text-sub uppercase tracking-widest mb-4 ml-1 opacity-70">
-                    Privacy & Security
-                </h3>
-                <div className="bg-surface rounded-[28px] overflow-hidden border border-white/10 shadow-md">
+        <div>
+            <h3 className="text-xs font-bold text-text-sub uppercase tracking-widest mb-4 ml-1 opacity-70">
+                Privacy & Security
+            </h3>
+            <div className="bg-surface rounded-[28px] overflow-hidden border border-white/10 shadow-md divide-y divide-white/5">
+                {isSupported && (
                     <div
                         className="p-5 flex justify-between items-center cursor-pointer hover:bg-surface-highlight/30 transition-colors"
                         onClick={toggleBiometric}
@@ -185,7 +190,7 @@ const Settings: React.FC = () => {
                                 Biometric Lock
                             </span>
                             <span className="text-xs text-text-sub opacity-70">
-                                Require Fingerprint/FaceID to unlock app
+                                Require Fingerprint/FaceID to unlock
                             </span>
                         </div>
                         <div
@@ -196,9 +201,41 @@ const Settings: React.FC = () => {
                             />
                         </div>
                     </div>
-                </div>
+                )}
+                
+                {Capacitor.isNativePlatform() && (
+                    <div
+                        className="p-5 flex justify-between items-center cursor-pointer hover:bg-surface-highlight/30 transition-colors"
+                        onClick={() => !hasPermission && requestPermission()}
+                    >
+                        <div className="flex flex-col gap-1.5">
+                            <span className="font-bold text-lg text-text-main">
+                                Notifications
+                            </span>
+                            <span className="text-xs text-text-sub opacity-70">
+                                {hasPermission ? "Push notifications enabled" : "Tap to enable notifications"}
+                            </span>
+                        </div>
+                        <div
+                            className={`w-14 h-8 rounded-full relative transition-colors duration-300 flex-shrink-0 ${hasPermission ? "bg-emerald-500 shadow-lg shadow-emerald-500/40" : "bg-surface-highlight border border-white/20"}`}
+                        >
+                            <div
+                                className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${hasPermission ? "translate-x-7" : "translate-x-1"}`}
+                            />
+                        </div>
+                    </div>
+                )}
+                
+                {hasPermission && (
+                     <div
+                        className="p-5 flex justify-between items-center cursor-pointer hover:bg-surface-highlight/30 transition-colors"
+                        onClick={testNotification}
+                     >
+                         <span className="font-bold text-sm text-primary">Test Notification</span>
+                     </div>
+                )}
             </div>
-        )}
+        </div>
 
         <div>
           <h3 className="text-xs font-bold text-text-sub uppercase tracking-widest mb-4 ml-1 opacity-70">

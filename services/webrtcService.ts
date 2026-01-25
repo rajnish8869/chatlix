@@ -17,74 +17,55 @@ export class WebRTCService {
     peerConnection: RTCPeerConnection | null = null;
     localStream: MediaStream | null = null;
     remoteStream: MediaStream | null = null;
-    unsubscribeSignaling: (() => void) | null = null;
-    unsubscribeCandidates: (() => void) | null = null;
     
     constructor() {}
     
-    // EDGE CASE 1: Robust Media Access with 3-Stage Fallback
     async setupLocalMedia(video: boolean = false): Promise<MediaStream> {
         if (!navigator.mediaDevices?.getUserMedia) {
             throw new Error("Media devices API not supported");
         }
 
-        const getMedia = async (constraints: MediaStreamConstraints) => {
-            return await navigator.mediaDevices.getUserMedia(constraints);
-        };
-
         try {
-            // Stage 1: Preferred (HD / User Facing)
-            if (video) {
-                return await getMedia({
-                    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-                    audio: { echoCancellation: true, noiseSuppression: true }
-                });
-            } else {
-                return await getMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-            }
+            // 1. Try with preferred constraints
+            // On some Android WebViews, specific facingMode or constraints can cause OverconstrainedError or general DOMException
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: video ? { 
+                    facingMode: 'user',
+                    // Optional: Add ideal resolution to prevent fetching 4k streams on low-end devices
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } : false,
+                audio: { echoCancellation: true, noiseSuppression: true }
+            });
+            this.localStream = stream;
+            return stream;
         } catch(e: any) {
-            console.warn("Stage 1 media failed, trying Stage 2...", e.message);
+            console.warn("Preferred media constraints failed, retrying with defaults...", e.name, e.message);
             
+            // 2. Fallback to basic constraints (often fixes OverconstrainedError)
             try {
-                // Stage 2: Basic (Any Resolution / System Default) - Fixes OverconstrainedError
-                return await getMedia({
-                    video: video ? true : false, // Let OS decide resolution
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: video ? true : false,
                     audio: true
                 });
+                this.localStream = stream;
+                return stream;
             } catch (err: any) {
-                console.warn("Stage 2 media failed, trying Stage 3 (Audio Only)...", err.message);
-                
-                // Stage 3: Audio Only Fallback (If camera is broken/in-use but mic works)
-                if (video) {
-                    try {
-                        const stream = await getMedia({ audio: true });
-                        // Notify UI that we fell back to audio
-                        throw new Error("VIDEO_FAILED_AUDIO_OK"); 
-                    } catch (finalErr) {
-                         throw finalErr;
-                    }
-                }
+                console.error("Error accessing media devices.", err.name, err.message);
                 throw err;
             }
         }
     }
 
-    createPeerConnection(onTrack: (stream: MediaStream) => void, onConnectionStateChange?: (state: string) => void) {
-        // EDGE CASE 2: Clean up previous PC if exists to prevent "Resource in use"
-        if (this.peerConnection) {
-            this.peerConnection.close();
-        }
-
+    createPeerConnection(onTrack: (stream: MediaStream) => void) {
         this.peerConnection = new RTCPeerConnection(servers);
         this.remoteStream = new MediaStream();
 
-        if (this.localStream) {
-            this.localStream.getTracks().forEach((track) => {
-                if (this.peerConnection && this.localStream) {
-                    this.peerConnection.addTrack(track, this.localStream);
-                }
-            });
-        }
+        this.localStream?.getTracks().forEach((track) => {
+            if (this.peerConnection && this.localStream) {
+                this.peerConnection.addTrack(track, this.localStream);
+            }
+        });
 
         this.peerConnection.ontrack = (event) => {
             event.streams[0].getTracks().forEach((track) => {
@@ -93,34 +74,7 @@ export class WebRTCService {
             onTrack(this.remoteStream!);
         };
         
-        // EDGE CASE 4: Network Disconnects & ICE State Monitoring
-        this.peerConnection.oniceconnectionstatechange = () => {
-            const state = this.peerConnection?.iceConnectionState;
-            console.log(`[WebRTC] ICE State: ${state}`);
-            if (onConnectionStateChange && state) {
-                onConnectionStateChange(state);
-            }
-            if (state === 'failed' || state === 'disconnected') {
-                // Trigger ICE Restart
-                this.restartIce(); 
-            }
-        };
-
         return this.peerConnection;
-    }
-    
-    async restartIce() {
-        if (!this.peerConnection) return;
-        console.log("[WebRTC] Attempting ICE Restart...");
-        // Create a new offer with iceRestart: true
-        try {
-            const offer = await this.peerConnection.createOffer({ iceRestart: true });
-            await this.peerConnection.setLocalDescription(offer);
-            // In a full implementation, we would send this new offer to Firestore
-            // to re-negotiate. For this scope, we catch the disconnect.
-        } catch (e) {
-            console.error("ICE Restart failed", e);
-        }
     }
 
     async createCall(callerId: string, calleeId: string, type: 'audio'|'video'): Promise<string> {
@@ -154,24 +108,22 @@ export class WebRTCService {
         await setDoc(callDocRef, callData);
 
         // Listen for Answer
-        this.unsubscribeSignaling = onSnapshot(callDocRef, (snapshot) => {
+        onSnapshot(callDocRef, (snapshot) => {
             const data = snapshot.data();
-            // EDGE CASE 3: Race Condition - Ensure we are in correct state before setting remote
-            if (this.peerConnection && !this.peerConnection.currentRemoteDescription && data?.answer) {
+            if (!this.peerConnection?.currentRemoteDescription && data?.answer) {
                 const answerDescription = new RTCSessionDescription(data.answer);
-                this.peerConnection.setRemoteDescription(answerDescription)
-                    .catch(e => console.error("Error setting remote description", e));
+                this.peerConnection.setRemoteDescription(answerDescription);
             }
         });
 
         // Listen for Remote Candidates
-        this.unsubscribeCandidates = onSnapshot(candidatesCol, (snapshot) => {
+        onSnapshot(candidatesCol, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
                      const data = change.doc.data();
                      if (data.type === 'callee' && this.peerConnection) {
                          const candidate = new RTCIceCandidate(data.candidate);
-                         this.peerConnection.addIceCandidate(candidate).catch(e => console.error("Error adding candidate", e));
+                         this.peerConnection.addIceCandidate(candidate);
                      }
                 }
             });
@@ -208,13 +160,13 @@ export class WebRTCService {
         await updateDoc(callDocRef, { answer, status: 'connected' });
 
         // Listen for Remote Candidates (Caller)
-        this.unsubscribeCandidates = onSnapshot(candidatesCol, (snapshot) => {
+        onSnapshot(candidatesCol, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
                      const data = change.doc.data();
                      if (data.type === 'caller' && this.peerConnection) {
                          const candidate = new RTCIceCandidate(data.candidate);
-                         this.peerConnection.addIceCandidate(candidate).catch(e => console.error("Error adding candidate", e));
+                         this.peerConnection.addIceCandidate(candidate);
                      }
                 }
             });
@@ -222,36 +174,23 @@ export class WebRTCService {
     }
 
     async cleanup(callId: string | null) {
-        if (this.unsubscribeSignaling) {
-            this.unsubscribeSignaling();
-            this.unsubscribeSignaling = null;
-        }
-        if (this.unsubscribeCandidates) {
-            this.unsubscribeCandidates();
-            this.unsubscribeCandidates = null;
-        }
-
         if (this.peerConnection) {
             this.peerConnection.close();
             this.peerConnection = null;
         }
-        
-        // EDGE CASE: Ensure tracks are completely stopped to release camera hardware
         if (this.localStream) {
-            this.localStream.getTracks().forEach(track => {
-                track.stop();
-                track.enabled = false;
-            });
+            this.localStream.getTracks().forEach(track => track.stop());
             this.localStream = null;
         }
         this.remoteStream = null;
 
         if (callId) {
+             // In a real app, use a Cloud Function or separate cleanup logic
+             // to avoid permissions issues if the other user already deleted it.
              try {
-                 // Set to ended so other peer detects disconnect
                  await updateDoc(doc(db, 'calls', callId), { status: 'ended' });
              } catch(e) {
-                 // ignore permission errors if already deleted
+                 // ignore
              }
         }
     }
