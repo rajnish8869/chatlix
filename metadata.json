@@ -2,6 +2,7 @@
   "name": "Chatlix",
   "description": "An Android-first chat application using Firebase as a backend, featuring offline syncing, material design, and secure authentication.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ]
 }

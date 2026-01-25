@@ -8,10 +8,12 @@
 
 
 
+
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
+import { useCall } from '../context/CallContext';
 import {
   TopBar,
   Icons,
@@ -232,7 +234,7 @@ const SwipeableMessage: React.FC<SwipeableMessageProps> = ({
       onTouchEnd={handleTouchEnd}
     >
       <div
-        className="absolute left-[-40px] top-1/2 -translate-y-1/2 transition-opacity duration-200 text-primary"
+        className="absolute left-[-40px] top-1/2 -translate-x-1/2 transition-opacity duration-200 text-primary"
         style={{
           opacity: Math.min(translateX / threshold, 1),
           transform: `translateY(-50%) scale(${Math.min(translateX / threshold, 1)})`,
@@ -461,6 +463,7 @@ const ChatDetail: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { startCall } = useCall();
   const {
     messages,
     loadMessages,
@@ -1000,6 +1003,13 @@ const ChatDetail: React.FC = () => {
 
   const typingText = getTypingText();
 
+  // Call Handlers
+  const handleStartCall = (type: 'audio' | 'video') => {
+      if (otherUserId) {
+          startCall(otherUserId, type);
+      }
+  };
+
   return (
     <div className="flex flex-col h-full w-full bg-background overflow-hidden relative">
         {/* --- Wallpaper Layer --- */}
@@ -1087,6 +1097,24 @@ const ChatDetail: React.FC = () => {
                 )}
               </div>
             </div>
+          }
+          actions={
+              currentChat?.type === 'private' && !iBlockedThem && !theyBlockedMe && (
+                <div className="flex items-center gap-1">
+                    <button 
+                        onClick={() => handleStartCall('audio')}
+                        className="p-2 text-text-main hover:bg-surface-highlight rounded-full transition-colors"
+                    >
+                        <Icons.Phone className="w-5 h-5" />
+                    </button>
+                    <button 
+                        onClick={() => handleStartCall('video')}
+                        className="p-2 text-text-main hover:bg-surface-highlight rounded-full transition-colors"
+                    >
+                        <Icons.Video className="w-6 h-6" />
+                    </button>
+                </div>
+              )
           }
           onBack={() => navigate("/")}
           onClickTitle={() => navigate(`/chat/${chatId}/info`)}

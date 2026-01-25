@@ -54,6 +54,17 @@ export interface Message {
   reactions?: Record<string, string>; // userId -> emoji
 }
 
+export interface CallSession {
+    call_id: string;
+    callerId: string;
+    calleeId: string;
+    type: 'audio' | 'video';
+    status: 'offering' | 'connected' | 'ended' | 'rejected';
+    offer?: any;
+    answer?: any;
+    timestamp: number;
+}
+
 export interface AppSettings {
   max_message_length: number;
   enable_groups: boolean;
