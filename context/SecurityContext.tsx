@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
@@ -52,11 +52,15 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isSupported, setIsSupported] = useState(false);
   const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
   const [isReady, setIsReady] = useState(false); // Blocks rendering until we check storage
+  
+  // Guard to prevent re-locking when app resumes from the biometric prompt itself
+  const isVerifying = useRef(false);
 
   const BIOMETRIC_PREF_KEY = 'chatlix_biometric_enabled';
 
   useEffect(() => {
     const initSecurity = async () => {
+        console.log("[Security] Initializing...");
         if (!Capacitor.isNativePlatform()) {
             console.log("[Security] Not native platform, disabling biometrics.");
             setIsReady(true);
@@ -65,17 +69,18 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         try {
             const result = await NativeBiometric.isAvailable();
+            console.log("[Security] Biometric Support:", result.isAvailable);
             setIsSupported(result.isAvailable);
 
             if (result.isAvailable) {
                 const pref = await SecureStorage.get(BIOMETRIC_PREF_KEY);
+                console.log("[Security] Stored Preference:", pref);
                 const enabled = pref === 'true';
                 setIsBiometricEnabled(enabled);
 
                 // Lock immediately if enabled and user exists (Cold Start)
-                // We check user existence inside the effect, but also rely on AuthProvider.
-                // If AuthProvider is loading, we might lock prematurely, but that's safe.
                 if (enabled) {
+                    console.log("[Security] Cold start lock.");
                     setIsLocked(true);
                 }
             }
@@ -94,9 +99,17 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (!isSupported || !isBiometricEnabled) return;
 
       const listener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+          console.log(`[Security] App State Change. Active: ${isActive}, IsVerifying: ${isVerifying.current}`);
           if (isActive) {
-              // App came to foreground -> Lock it
-              setIsLocked(true);
+              // If we are currently in the middle of a verification flow, 
+              // the app resume event is likely triggered by the biometric prompt closing.
+              // We should NOT re-lock in this case.
+              if (!isVerifying.current) {
+                  console.log("[Security] App resumed and not verifying -> LOCKING");
+                  setIsLocked(true);
+              } else {
+                  console.log("[Security] App resumed but verification in progress -> SKIPPING LOCK");
+              }
           }
       });
 
@@ -106,26 +119,43 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [isSupported, isBiometricEnabled]);
 
   const verifyIdentity = useCallback(async (): Promise<boolean> => {
-      if (!isSupported) return false;
+      if (!isSupported) {
+          console.warn("[Security] Verify called but not supported");
+          return false;
+      }
+      
+      console.log("[Security] Starting verifyIdentity...");
+      isVerifying.current = true;
+      
       try {
           // NativeBiometric.verifyIdentity returns void on success, throws on failure.
-          // We await it; if it resolves, auth was successful.
           await NativeBiometric.verifyIdentity({
               reason: "Unlock Chatlix",
               title: "Unlock Chatlix",
               subtitle: "Verify your identity",
               description: "Use your fingerprint or Face ID"
           });
+          console.log("[Security] NativeBiometric resolved successfully.");
           return true;
       } catch (e) {
           console.warn("[Security] Verification failed or cancelled", e);
           return false;
+      } finally {
+          // Add a small delay before clearing the flag to handle the race condition
+          // where the app resume event fires slightly after the promise resolves
+          setTimeout(() => {
+             isVerifying.current = false;
+             console.log("[Security] Verification flag cleared.");
+          }, 1000);
       }
   }, [isSupported]);
 
   const unlock = useCallback(async () => {
+      console.log("[Security] Unlock requested.");
       const success = await verifyIdentity();
+      console.log("[Security] Verify Result:", success);
       if (success) {
+          console.log("[Security] Unlocking app state.");
           setIsLocked(false);
       }
   }, [verifyIdentity]);
@@ -133,7 +163,9 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Attempt to auto-unlock when lock screen appears
   useEffect(() => {
       let isMounted = true;
+      
       if (isLocked && isSupported && isBiometricEnabled) {
+          console.log("[Security] Auto-unlock triggering in 500ms...");
           // Add a small delay to ensure UI is ready and prevent potential race conditions with app resume
           const timer = setTimeout(async () => {
               if (!isMounted) return;
@@ -147,6 +179,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [isLocked, isSupported, isBiometricEnabled, unlock]);
 
   const toggleBiometric = async () => {
+      console.log("[Security] Toggling Biometric. Current:", isBiometricEnabled);
       // Always verify identity before changing security settings
       const verified = await verifyIdentity();
       
@@ -154,6 +187,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const newState = !isBiometricEnabled;
           setIsBiometricEnabled(newState);
           await SecureStorage.set(BIOMETRIC_PREF_KEY, String(newState));
+          console.log("[Security] Toggled to:", newState);
       }
   };
 
