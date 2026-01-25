@@ -1,6 +1,8 @@
 
 
 
+
+
 import { User, Chat, Message, AppSettings, ApiResponse, LogEvent, Wallpaper } from '../types';
 import { 
     collection, 
@@ -486,7 +488,7 @@ export const chatService = {
 
   // --- MESSAGES ---
 
-  subscribeToMessages: (chatId: string, limitCount: number, callback: (msgs: Message[]) => void) => {
+  subscribeToMessages: (chatId: string, limitCount: number, callback: (msgs: Message[], removedIds: string[]) => void) => {
       const qRealtime = query(
           collection(db, `chats/${chatId}/messages`),
           orderBy('timestamp', 'desc'),
@@ -499,9 +501,13 @@ export const chatService = {
               ...doc.data(),
               status: doc.metadata.hasPendingWrites ? 'pending' : doc.data().status
           } as Message));
+
+          const removedIds = snapshot.docChanges()
+              .filter(change => change.type === 'removed')
+              .map(change => change.doc.id);
           
           msgs.reverse();
-          callback(msgs);
+          callback(msgs, removedIds);
       });
   },
 

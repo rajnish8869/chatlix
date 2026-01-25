@@ -1,6 +1,8 @@
 
 
 
+
+
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Chat, Message, AppSettings, User, ApiResponse, Wallpaper } from '../types';
 import { useAuth } from './AuthContext';
@@ -420,12 +422,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadMessages = useCallback(async (chatId: string) => {
     if (messageUnsubs.current[chatId]) return;
 
-    messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 50, (incomingMsgs) => {
-        // No filtering of messages here anymore
+    messageUnsubs.current[chatId] = chatService.subscribeToMessages(chatId, 50, (incomingMsgs, removedIds) => {
+        // Updated to handle removed IDs
         setMessages(prev => {
             const currentMsgs = prev[chatId] || [];
+            
+            // Filter out deleted messages first
+            let filteredMsgs = currentMsgs;
+            if (removedIds && removedIds.length > 0) {
+                 filteredMsgs = currentMsgs.filter(m => !removedIds.includes(m.message_id));
+            }
+            
             const msgMap = new Map();
-            currentMsgs.forEach(m => msgMap.set(m.message_id, m));
+            filteredMsgs.forEach(m => msgMap.set(m.message_id, m));
             incomingMsgs.forEach(m => msgMap.set(m.message_id, m));
             
             const merged = Array.from(msgMap.values()).sort((a: Message, b: Message) => 
