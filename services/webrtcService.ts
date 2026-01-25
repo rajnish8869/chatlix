@@ -21,16 +21,39 @@ export class WebRTCService {
     constructor() {}
     
     async setupLocalMedia(video: boolean = false): Promise<MediaStream> {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            throw new Error("Media devices API not supported");
+        }
+
         try {
+            // 1. Try with preferred constraints
+            // On some Android WebViews, specific facingMode or constraints can cause OverconstrainedError or general DOMException
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: video ? { facingMode: 'user' } : false,
+                video: video ? { 
+                    facingMode: 'user',
+                    // Optional: Add ideal resolution to prevent fetching 4k streams on low-end devices
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } : false,
                 audio: { echoCancellation: true, noiseSuppression: true }
             });
             this.localStream = stream;
             return stream;
-        } catch(e) {
-            console.error("Error accessing media devices.", e);
-            throw e;
+        } catch(e: any) {
+            console.warn("Preferred media constraints failed, retrying with defaults...", e.name, e.message);
+            
+            // 2. Fallback to basic constraints (often fixes OverconstrainedError)
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: video ? true : false,
+                    audio: true
+                });
+                this.localStream = stream;
+                return stream;
+            } catch (err: any) {
+                console.error("Error accessing media devices.", err.name, err.message);
+                throw err;
+            }
         }
     }
 

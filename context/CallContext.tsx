@@ -116,10 +116,22 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 alert("Call failed: Permission denied or connection lost.");
             });
             
-        } catch (e) {
+        } catch (e: any) {
             console.error("Failed to start call", e);
             setCallStatus('idle');
-            alert("Could not start call. Check camera/microphone permissions.");
+            
+            let msg = "Could not start call.";
+            if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+                msg = "Permission denied. Please allow camera/microphone access in your device settings.";
+            } else if (e.name === 'NotFoundError') {
+                msg = "No camera or microphone found on this device.";
+            } else if (e.name === 'NotReadableError') {
+                msg = "Camera/Mic is currently in use by another app.";
+            } else if (e.name === 'OverconstrainedError') {
+                msg = "Camera does not support the requested quality.";
+            }
+            
+            alert(msg);
         }
     };
 
