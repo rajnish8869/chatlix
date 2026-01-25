@@ -12,31 +12,34 @@ interface SecurityContextType {
   isBiometricEnabled: boolean;
   toggleBiometric: () => Promise<void>;
   unlock: () => Promise<void>;
+  authError: string | null;
 }
 
 const SecurityContext = createContext<SecurityContextType | undefined>(undefined);
 
 // --- Lock Screen Overlay Component ---
-const LockScreen: React.FC<{ onUnlock: () => void }> = ({ onUnlock }) => (
+const LockScreen: React.FC<{ onUnlock: () => void; error: string | null }> = ({ onUnlock, error }) => (
     <div className="fixed inset-0 z-[100] bg-background flex flex-col items-center justify-center overscroll-none touch-none select-none">
         {/* Abstract Background */}
         <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%] bg-gradient-to-br from-primary/10 via-transparent to-purple-600/10 opacity-50 blur-3xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col items-center animate-scale-in gap-8">
             <div className="w-24 h-24 rounded-full bg-surface/50 backdrop-blur-lg border border-white/10 shadow-2xl flex items-center justify-center animate-pulse cursor-pointer" onClick={onUnlock}>
-                 <Icons.Fingerprint className="w-12 h-12 text-primary" />
+                 <Icons.Fingerprint className={`w-12 h-12 ${error ? 'text-danger' : 'text-primary'}`} />
             </div>
             
-            <div className="text-center space-y-2">
+            <div className="text-center space-y-2 px-6">
                 <h1 className="text-2xl font-black text-text-main tracking-tight">Chatlix Locked</h1>
-                <p className="text-text-sub opacity-60 text-sm">Unlock to access your messages</p>
+                <p className={`text-sm ${error ? 'text-danger font-bold' : 'text-text-sub opacity-60'}`}>
+                    {error || "Unlock to access your messages"}
+                </p>
             </div>
 
             <button 
                 onClick={onUnlock}
-                className="mt-4 px-8 py-3 bg-surface-highlight rounded-xl text-primary font-bold text-sm hover:bg-primary/10 transition-colors border border-primary/20"
+                className={`mt-4 px-8 py-3 rounded-xl font-bold text-sm transition-colors border ${error ? 'bg-danger/10 text-danger border-danger/20 hover:bg-danger/20' : 'bg-surface-highlight text-primary border-primary/20 hover:bg-primary/10'}`}
             >
-                Use Biometrics
+                {error ? "Try Again" : "Use Biometrics"}
             </button>
         </div>
 
@@ -51,10 +54,15 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isLocked, setIsLocked] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
-  const [isReady, setIsReady] = useState(false); // Blocks rendering until we check storage
+  const [isReady, setIsReady] = useState(false); 
+  const [authError, setAuthError] = useState<string | null>(null);
   
-  // Guard to prevent re-locking when app resumes from the biometric prompt itself
+  // Guard to prevent re-locking when app resumes from the biometric prompt
   const isVerifying = useRef(false);
+  // Guard to prevent overlapping plugin calls
+  const isBiometricPending = useRef(false);
+  // Ref to hold the cleanup timeout so we can cancel it
+  const verificationTimeoutRef = useRef<any>(null);
 
   const BIOMETRIC_PREF_KEY = 'chatlix_biometric_enabled';
 
@@ -78,7 +86,6 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 const enabled = pref === 'true';
                 setIsBiometricEnabled(enabled);
 
-                // Lock immediately if enabled and user exists (Cold Start)
                 if (enabled) {
                     console.log("[Security] Cold start lock.");
                     setIsLocked(true);
@@ -123,12 +130,25 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           console.warn("[Security] Verify called but not supported");
           return false;
       }
+
+      if (isBiometricPending.current) {
+          console.log("[Security] Biometric call already pending, ignoring.");
+          return false;
+      }
       
       console.log("[Security] Starting verifyIdentity...");
+      
+      // Clear any pending cleanup timeout from a previous run
+      if (verificationTimeoutRef.current) {
+          clearTimeout(verificationTimeoutRef.current);
+          verificationTimeoutRef.current = null;
+      }
+
       isVerifying.current = true;
+      isBiometricPending.current = true;
+      setAuthError(null);
       
       try {
-          // NativeBiometric.verifyIdentity returns void on success, throws on failure.
           await NativeBiometric.verifyIdentity({
               reason: "Unlock Chatlix",
               title: "Unlock Chatlix",
@@ -141,9 +161,11 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           console.warn("[Security] Verification failed or cancelled", e);
           return false;
       } finally {
-          // Add a small delay before clearing the flag to handle the race condition
-          // where the app resume event fires slightly after the promise resolves
-          setTimeout(() => {
+          isBiometricPending.current = false;
+          // Add a delay before clearing the 'isVerifying' flag. 
+          // This ensures that if the 'appStateChange' event fires slightly after 
+          // the promise resolves (or rejects), we still consider it part of the verification flow.
+          verificationTimeoutRef.current = setTimeout(() => {
              isVerifying.current = false;
              console.log("[Security] Verification flag cleared.");
           }, 1000);
@@ -157,6 +179,9 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (success) {
           console.log("[Security] Unlocking app state.");
           setIsLocked(false);
+          setAuthError(null);
+      } else {
+          setAuthError("Authentication failed.");
       }
   }, [verifyIdentity]);
 
@@ -166,7 +191,6 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       if (isLocked && isSupported && isBiometricEnabled) {
           console.log("[Security] Auto-unlock triggering in 500ms...");
-          // Add a small delay to ensure UI is ready and prevent potential race conditions with app resume
           const timer = setTimeout(async () => {
               if (!isMounted) return;
               await unlock();
@@ -180,7 +204,6 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const toggleBiometric = async () => {
       console.log("[Security] Toggling Biometric. Current:", isBiometricEnabled);
-      // Always verify identity before changing security settings
       const verified = await verifyIdentity();
       
       if (verified) {
@@ -192,14 +215,13 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   if (!isReady) {
-      // Prevent flash of content before we know if we should lock
       return <div className="fixed inset-0 bg-background" />;
   }
 
   return (
-    <SecurityContext.Provider value={{ isLocked, isSupported, isBiometricEnabled, toggleBiometric, unlock }}>
+    <SecurityContext.Provider value={{ isLocked, isSupported, isBiometricEnabled, toggleBiometric, unlock, authError }}>
       {children}
-      {isLocked && user && <LockScreen onUnlock={unlock} />}
+      {isLocked && user && <LockScreen onUnlock={unlock} error={authError} />}
     </SecurityContext.Provider>
   );
 };
