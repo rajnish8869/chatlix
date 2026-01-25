@@ -3,12 +3,14 @@ import React, { useState, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
 import { useTheme, Theme } from "../context/ThemeContext";
+import { useSecurity } from "../context/SecurityContext";
 import { TopBar, Button, Icons, Input, Avatar } from "../components/AndroidUI";
 
 const Settings: React.FC = () => {
   const { user, logout, updateName, toggleGroupChats, updateProfilePicture } = useAuth();
   const { isOffline } = useData();
   const { theme, setTheme } = useTheme();
+  const { isSupported, isBiometricEnabled, toggleBiometric } = useSecurity();
   const [loggingOut, setLoggingOut] = useState(false);
 
   const [isEditingName, setIsEditingName] = useState(false);
@@ -167,6 +169,37 @@ const Settings: React.FC = () => {
           </div>
         </div>
 
+        {isSupported && (
+            <div>
+                <h3 className="text-xs font-bold text-text-sub uppercase tracking-widest mb-4 ml-1 opacity-70">
+                    Privacy & Security
+                </h3>
+                <div className="bg-surface rounded-[28px] overflow-hidden border border-white/10 shadow-md">
+                    <div
+                        className="p-5 flex justify-between items-center cursor-pointer hover:bg-surface-highlight/30 transition-colors"
+                        onClick={toggleBiometric}
+                    >
+                        <div className="flex flex-col gap-1.5">
+                            <span className="font-bold text-lg text-text-main flex items-center gap-2">
+                                <Icons.Fingerprint className="w-5 h-5 text-primary" />
+                                Biometric Lock
+                            </span>
+                            <span className="text-xs text-text-sub opacity-70">
+                                Require Fingerprint/FaceID to unlock app
+                            </span>
+                        </div>
+                        <div
+                            className={`w-14 h-8 rounded-full relative transition-colors duration-300 flex-shrink-0 ${isBiometricEnabled ? "bg-primary shadow-lg shadow-primary/40" : "bg-surface-highlight border border-white/20"}`}
+                        >
+                            <div
+                                className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${isBiometricEnabled ? "translate-x-7" : "translate-x-1"}`}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
         <div>
           <h3 className="text-xs font-bold text-text-sub uppercase tracking-widest mb-4 ml-1 opacity-70">
             Preferences
@@ -204,7 +237,7 @@ const Settings: React.FC = () => {
         </button>
 
         <p className="text-center text-[10px] text-text-sub opacity-30 pt-6 font-mono">
-          Chatlix v3.2 • Build 2024.12
+          Chatlix v3.3 • Build 2024.12
         </p>
       </div>
     </div>

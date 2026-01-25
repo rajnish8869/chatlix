@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { DatabaseProvider } from './context/DatabaseContext';
+import { SecurityProvider } from './context/SecurityContext';
 import Login from './pages/Login';
 import ChatList from './pages/ChatList';
 import ChatDetail from './pages/ChatDetail';
@@ -152,14 +153,16 @@ const App: React.FC = () => {
   return (
     <DatabaseProvider>
       <AuthProvider>
-        <DataProvider>
-          <ThemeProvider>
-            <HashRouter>
-                <AndroidBackButtonHandler />
-                <AppLayout />
-            </HashRouter>
-          </ThemeProvider>
-        </DataProvider>
+        <SecurityProvider>
+          <DataProvider>
+            <ThemeProvider>
+              <HashRouter>
+                  <AndroidBackButtonHandler />
+                  <AppLayout />
+              </HashRouter>
+            </ThemeProvider>
+          </DataProvider>
+        </SecurityProvider>
       </AuthProvider>
     </DatabaseProvider>
   );
