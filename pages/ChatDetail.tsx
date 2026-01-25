@@ -1,6 +1,8 @@
 
 
 
+
+
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -544,8 +546,12 @@ const ChatDetail: React.FC = () => {
   const activeWallpaper = personalWallpaper || groupWallpaper;
 
   useEffect(() => {
-    const handleResize = () =>
-      setViewportHeight(window.visualViewport?.height || window.innerHeight);
+    const handleResize = () => {
+        // Prevent browser scroll shift when keyboard opens
+        window.scrollTo(0, 0);
+        setViewportHeight(window.visualViewport?.height || window.innerHeight);
+    };
+    
     window.visualViewport?.addEventListener("resize", handleResize);
     return () =>
       window.visualViewport?.removeEventListener("resize", handleResize);
@@ -1049,7 +1055,7 @@ const ChatDetail: React.FC = () => {
         />
       )}
 
-      <div className="flex-1 min-h-0 relative z-10">
+      <div className="flex-1 min-h-0 relative z-10 overscroll-y-contain">
         <Virtuoso
           ref={virtuosoRef}
           data={chatMessages}

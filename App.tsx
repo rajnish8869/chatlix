@@ -1,4 +1,6 @@
 
+
+
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -81,7 +83,7 @@ const AppLayout: React.FC = () => {
   const showBottomNav = location.pathname === '/' || location.pathname === '/settings';
 
   return (
-    <div className="bg-background text-text-main h-[100dvh] flex flex-col transition-colors duration-300 overflow-hidden">
+    <div className="bg-background text-text-main h-full flex flex-col transition-colors duration-300 overflow-hidden">
       <div className="flex-1 flex flex-col relative overflow-hidden min-h-0">
         <Routes>
           <Route path="/" element={<ChatList />} />

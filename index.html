@@ -1,4 +1,6 @@
 
+
+
 <!DOCTYPE html>
 <html lang="en" data-theme="midnight">
   <head>
@@ -110,6 +112,13 @@
         --danger-color: #ef4444;
       }
 
+      html, body, #root {
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        position: fixed; /* Lock viewport to prevent keyboard resizing shifts */
+      }
+
       body {
         background-color: var(--bg-color);
         color: var(--text-main);
@@ -172,4 +181,3 @@
     <script type="module" src="./index.tsx"></script>
   </body>
 </html>
-    
