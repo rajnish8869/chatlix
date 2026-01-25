@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
@@ -97,8 +97,6 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (isActive) {
               // App came to foreground -> Lock it
               setIsLocked(true);
-              // Optional: trigger auth immediately
-              // verifyIdentity(); 
           }
       });
 
@@ -107,20 +105,12 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
   }, [isSupported, isBiometricEnabled]);
 
-  // Attempt to auto-unlock when lock screen appears
-  useEffect(() => {
-      if (isLocked && isSupported && isBiometricEnabled) {
-          // Add a small delay to ensure UI is ready
-          const timer = setTimeout(() => {
-              verifyIdentity();
-          }, 500);
-          return () => clearTimeout(timer);
-      }
-  }, [isLocked]);
-
-  const verifyIdentity = async (): Promise<boolean> => {
+  const verifyIdentity = useCallback(async (): Promise<boolean> => {
+      if (!isSupported) return false;
       try {
-          const result = await NativeBiometric.verifyIdentity({
+          // NativeBiometric.verifyIdentity returns void on success, throws on failure.
+          // We await it; if it resolves, auth was successful.
+          await NativeBiometric.verifyIdentity({
               reason: "Unlock Chatlix",
               title: "Unlock Chatlix",
               subtitle: "Verify your identity",
@@ -128,17 +118,33 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           });
           return true;
       } catch (e) {
-          console.warn("[Security] Verification failed or cancelled");
+          console.warn("[Security] Verification failed or cancelled", e);
           return false;
       }
-  };
+  }, [isSupported]);
 
-  const unlock = async () => {
+  const unlock = useCallback(async () => {
       const success = await verifyIdentity();
       if (success) {
           setIsLocked(false);
       }
-  };
+  }, [verifyIdentity]);
+
+  // Attempt to auto-unlock when lock screen appears
+  useEffect(() => {
+      let isMounted = true;
+      if (isLocked && isSupported && isBiometricEnabled) {
+          // Add a small delay to ensure UI is ready and prevent potential race conditions with app resume
+          const timer = setTimeout(async () => {
+              if (!isMounted) return;
+              await unlock();
+          }, 500);
+          return () => {
+              isMounted = false;
+              clearTimeout(timer);
+          };
+      }
+  }, [isLocked, isSupported, isBiometricEnabled, unlock]);
 
   const toggleBiometric = async () => {
       // Always verify identity before changing security settings
