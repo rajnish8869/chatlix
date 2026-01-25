@@ -13,7 +13,6 @@ export interface User {
   profile_picture?: string; // Base64 Data URL
   blocked_users?: string[]; // Array of User IDs blocked by this user
   chat_wallpapers?: Record<string, Wallpaper>; // Map of chatId -> Wallpaper (Personal overrides)
-  fcm_tokens?: string[]; // Array of FCM tokens for Push Notifications
 }
 
 export interface Chat {
