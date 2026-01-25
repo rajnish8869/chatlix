@@ -1,11 +1,10 @@
 
-
-
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { DatabaseProvider } from './context/DatabaseContext';
 import Login from './pages/Login';
 import ChatList from './pages/ChatList';
 import ChatDetail from './pages/ChatDetail';
@@ -151,16 +150,18 @@ const AndroidBackButtonHandler = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <DataProvider>
-        <ThemeProvider>
-          <HashRouter>
-              <AndroidBackButtonHandler />
-              <AppLayout />
-          </HashRouter>
-        </ThemeProvider>
-      </DataProvider>
-    </AuthProvider>
+    <DatabaseProvider>
+      <AuthProvider>
+        <DataProvider>
+          <ThemeProvider>
+            <HashRouter>
+                <AndroidBackButtonHandler />
+                <AppLayout />
+            </HashRouter>
+          </ThemeProvider>
+        </DataProvider>
+      </AuthProvider>
+    </DatabaseProvider>
   );
 };
 

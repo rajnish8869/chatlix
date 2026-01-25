@@ -1,21 +1,17 @@
 
-// Abstraction for Secure Storage
-// In a real Capacitor project, you would install 'capacitor-secure-storage-plugin'
-// Since we are running in a web/hybrid context, we simulate the plugin interface or use it if available.
+import { databaseService } from '../services/databaseService';
 
+// Abstraction for Secure Storage
 export const SecureStorage = {
   get: async (key: string): Promise<string | null> => {
     try {
-      // Check if running in Capacitor Native
-      // @ts-ignore
-      if (window.Capacitor && window.Capacitor.isNative) {
-         // Placeholder for actual plugin call
-         // const { value } = await SecureStoragePlugin.get({ key });
-         // return value;
-         
-         // Using localStorage for now as the plugin isn't strictly available in this web preview environment
-         return localStorage.getItem(key);
+      // Prioritize SQLite for data persistence if initialized
+      if (databaseService.db) {
+         const val = await databaseService.getKv(key);
+         if (val) return val;
       }
+      
+      // Fallback to localStorage (and for keys in this mock env)
       return localStorage.getItem(key);
     } catch (e) {
       console.error("SecureStorage Get Error", e);
@@ -25,12 +21,10 @@ export const SecureStorage = {
 
   set: async (key: string, value: string): Promise<void> => {
     try {
-      // @ts-ignore
-      if (window.Capacitor && window.Capacitor.isNative) {
-         // await SecureStoragePlugin.set({ key, value });
-         localStorage.setItem(key, value);
-         return;
+      if (databaseService.db) {
+          await databaseService.setKv(key, value);
       }
+      // Keep localStorage in sync for fallback/bootstrapping
       localStorage.setItem(key, value);
     } catch (e) {
       console.error("SecureStorage Set Error", e);
@@ -39,11 +33,8 @@ export const SecureStorage = {
 
   remove: async (key: string): Promise<void> => {
     try {
-       // @ts-ignore
-      if (window.Capacitor && window.Capacitor.isNative) {
-         // await SecureStoragePlugin.remove({ key });
-         localStorage.removeItem(key);
-         return;
+      if (databaseService.db) {
+          await databaseService.removeKv(key);
       }
       localStorage.removeItem(key);
     } catch (e) {

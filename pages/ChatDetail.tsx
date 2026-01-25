@@ -6,6 +6,8 @@
 
 
 
+
+
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -480,6 +482,8 @@ const ChatDetail: React.FC = () => {
 
   const [inputText, setInputText] = useState("");
   const [showScrollFab, setShowScrollFab] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -520,6 +524,7 @@ const ChatDetail: React.FC = () => {
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const chatMessages = chatId ? messages[chatId] || [] : [];
+  const prevMessagesLengthRef = useRef(chatMessages.length);
   const currentChat = chats.find((c) => c.chat_id === chatId);
 
   const otherUserId = currentChat?.participants.find(
@@ -589,6 +594,28 @@ const ChatDetail: React.FC = () => {
       markChatAsRead(chatId);
     }
   }, [chatMessages, chatId, user, markChatAsRead]);
+
+  // Reset count when changing chat
+  useEffect(() => {
+    setUnreadCount(0);
+  }, [chatId]);
+
+  // Unread count logic
+  useEffect(() => {
+    const currentLength = chatMessages.length;
+    const previousLength = prevMessagesLengthRef.current;
+
+    if (currentLength > previousLength) {
+        if (showScrollFab) {
+             const newMessages = chatMessages.slice(previousLength);
+             const incomingCount = newMessages.filter(m => String(m.sender_id) !== String(user?.user_id)).length;
+             if (incomingCount > 0) {
+                 setUnreadCount(prev => prev + incomingCount);
+             }
+        }
+    }
+    prevMessagesLengthRef.current = currentLength;
+  }, [chatMessages, showScrollFab, user?.user_id]);
 
   useEffect(() => {
     const state = location.state as { scrollToMessageId?: string } | null;
@@ -1076,7 +1103,10 @@ const ChatDetail: React.FC = () => {
             if (chatId) loadMoreMessages(chatId);
           }}
           overscan={500}
-          atBottomStateChange={(atBottom) => setShowScrollFab(!atBottom)}
+          atBottomStateChange={(atBottom) => {
+            setShowScrollFab(!atBottom);
+            if (atBottom) setUnreadCount(0);
+          }}
           followOutput={(isAtBottom) => {
             if (highlightedMsgId) return false;
 
@@ -1124,10 +1154,12 @@ const ChatDetail: React.FC = () => {
           }}
         />
         <ScrollDownFab
-          onClick={() =>
-            virtuosoRef.current?.scrollTo({ top: 10000000, behavior: "smooth" })
-          }
+          onClick={() => {
+            virtuosoRef.current?.scrollTo({ top: 10000000, behavior: "smooth" });
+            setUnreadCount(0);
+          }}
           visible={showScrollFab}
+          unreadCount={unreadCount}
         />
 
         {pendingScrollTo && (

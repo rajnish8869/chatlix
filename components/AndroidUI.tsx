@@ -443,7 +443,8 @@ export const FAB: React.FC<{ onClick: () => void; icon?: React.ReactNode }> = ({
 export const ScrollDownFab: React.FC<{
   onClick: () => void;
   visible: boolean;
-}> = ({ onClick, visible }) => (
+  unreadCount?: number;
+}> = ({ onClick, visible, unreadCount = 0 }) => (
   <button
     onClick={onClick}
     className={`
@@ -456,6 +457,11 @@ export const ScrollDownFab: React.FC<{
     }}
   >
     <Icons.ChevronDown className="w-5 h-5" />
+    {unreadCount > 0 && (
+      <div className="absolute -top-1 -right-1 w-5 h-5 bg-danger text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm animate-scale-in border border-surface">
+        {unreadCount > 99 ? '99+' : unreadCount}
+      </div>
+    )}
   </button>
 );
 
