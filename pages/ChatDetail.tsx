@@ -3,6 +3,9 @@
 
 
 
+
+
+
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -476,9 +479,6 @@ const ChatDetail: React.FC = () => {
   } = useData();
 
   const [inputText, setInputText] = useState("");
-  const [viewportHeight, setViewportHeight] = useState(
-    window.visualViewport?.height || window.innerHeight,
-  );
   const [showScrollFab, setShowScrollFab] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -545,17 +545,31 @@ const ChatDetail: React.FC = () => {
   // Priority: Personal Override > Group Shared > Default
   const activeWallpaper = personalWallpaper || groupWallpaper;
 
+  // --- WINDOW RESIZE & FOCUS HANDLING ---
   useEffect(() => {
-    const handleResize = () => {
-        // Prevent browser scroll shift when keyboard opens
+    const lockScroll = () => {
+        // Force document back to top if browser tries to scroll it
         window.scrollTo(0, 0);
-        setViewportHeight(window.visualViewport?.height || window.innerHeight);
+        document.body.scrollTop = 0;
     };
     
-    window.visualViewport?.addEventListener("resize", handleResize);
-    return () =>
-      window.visualViewport?.removeEventListener("resize", handleResize);
+    window.addEventListener("resize", lockScroll);
+    window.addEventListener("scroll", lockScroll); // Aggressive lock
+    
+    return () => {
+      window.removeEventListener("resize", lockScroll);
+      window.removeEventListener("scroll", lockScroll);
+    };
   }, []);
+
+  const handleInputFocus = () => {
+      // Small timeout to allow keyboard animation to start
+      setTimeout(() => {
+          window.scrollTo(0, 0);
+          virtuosoRef.current?.scrollTo({ top: 10000000, behavior: "auto" });
+      }, 100);
+      setTimeout(() => window.scrollTo(0, 0), 300); // Secondary check
+  };
 
   useEffect(() => {
     if (chatId) {
@@ -960,10 +974,7 @@ const ChatDetail: React.FC = () => {
   const typingText = getTypingText();
 
   return (
-    <div
-      className="fixed inset-0 flex flex-col bg-background overflow-hidden"
-      style={{ height: `${viewportHeight}px` }}
-    >
+    <div className="flex flex-col h-full w-full bg-background overflow-hidden relative">
         {/* --- Wallpaper Layer --- */}
         {activeWallpaper && (
             <div className="absolute inset-0 z-0 pointer-events-none">
@@ -986,7 +997,7 @@ const ChatDetail: React.FC = () => {
 
       {isSelectionMode ? (
         <TopBar
-          className="z-30 flex-shrink-0 bg-surface/80 backdrop-blur border-b border-primary/20"
+          className="z-30 flex-shrink-0 bg-surface/80 backdrop-blur border-b border-primary/20 flex-none"
           title={`${selectedMsgIds.size} selected`}
           onBack={() => setSelectedMsgIds(new Set())}
           actions={
@@ -1010,7 +1021,7 @@ const ChatDetail: React.FC = () => {
         />
       ) : (
         <TopBar
-          className="z-30 flex-shrink-0 border-b border-white/5"
+          className="z-30 flex-shrink-0 border-b border-white/5 flex-none"
           title={
             <div className="flex items-center gap-2.5">
               <Avatar
@@ -1129,7 +1140,7 @@ const ChatDetail: React.FC = () => {
         )}
       </div>
 
-      <div className="w-full pt-1 pb-2 px-3 flex-shrink-0 z-20">
+      <div className="w-full pt-1 pb-2 px-3 flex-shrink-0 z-20 flex-none">
         {isBlocked ? (
             // --- BLOCKED STATE FOOTER (ONLY FOR PRIVATE CHATS) ---
             <div className="max-w-5xl mx-auto bg-surface/70 backdrop-blur-xl border border-white/10 shadow-lg rounded-[24px] mb-[env(safe-area-inset-bottom)] p-4 flex flex-col items-center justify-center text-center gap-2 animate-slide-up">
@@ -1206,6 +1217,7 @@ const ChatDetail: React.FC = () => {
                         ref={textareaRef}
                         value={inputText}
                         onChange={handleInputChange}
+                        onFocus={handleInputFocus}
                         placeholder="Type a message..."
                         rows={1}
                         className="flex-1 bg-transparent text-text-main text-[15px] border-none focus:ring-0 resize-none min-h-[40px] max-h-[120px] py-[9px] px-2 placeholder:text-text-sub/40 font-medium leading-relaxed"

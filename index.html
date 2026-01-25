@@ -1,6 +1,8 @@
 
 
 
+
+
 <!DOCTYPE html>
 <html lang="en" data-theme="midnight">
   <head>
@@ -115,14 +117,15 @@
       html, body, #root {
         height: 100%;
         width: 100%;
-        overflow: hidden;
-        position: fixed; /* Lock viewport to prevent keyboard resizing shifts */
+        margin: 0;
+        padding: 0;
+        overflow: hidden; /* Prevent document scroll */
+        overscroll-behavior: none; /* Disable bounce */
       }
 
       body {
         background-color: var(--bg-color);
         color: var(--text-main);
-        overscroll-behavior-y: none;
         -webkit-tap-highlight-color: transparent;
         transition: background-color 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
         font-family: 'Inter', sans-serif;
