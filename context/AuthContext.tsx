@@ -1,8 +1,8 @@
+
 import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { chatService } from '../services/chatService';
-import { auth, db } from '../services/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth, db, onAuthStateChanged, signOut } from '../services/firebase';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { generateKeyPair } from '../utils/crypto';
 import { SecureStorage } from '../utils/storage';
@@ -28,7 +28,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let profileUnsub: (() => void) | null = null;
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser: any) => {
         // Clear previous listener if any
         if (profileUnsub) {
             profileUnsub();

@@ -1,6 +1,6 @@
 
 import * as firebaseApp from "firebase/app";
-import { getAuth } from "firebase/auth";
+import * as firebaseAuth from "firebase/auth";
 import { initializeFirestore, persistentLocalCache } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
@@ -9,6 +9,17 @@ import { getStorage } from "firebase/storage";
 // This can occur if type definitions are mismatched or in certain module resolution contexts.
 const firebaseAppModule = firebaseApp as any;
 const { initializeApp, getApps, getApp } = firebaseAppModule.default || firebaseAppModule;
+
+// Workaround for firebase/auth exports
+const firebaseAuthModule = firebaseAuth as any;
+const { 
+  getAuth, 
+  onAuthStateChanged, 
+  signOut, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  updateProfile 
+} = firebaseAuthModule.default || firebaseAuthModule;
 
 const firebaseConfig = {
   apiKey: "AIzaSyC8Usjvsc9urqgVMaU-j4chKvtzHRP55L0",
@@ -41,4 +52,16 @@ const storage = getStorage(app);
 
 console.log("[Firebase] Services initialized (Auth, Firestore, RTDB, Storage) with ForceLongPolling");
 
-export { app, auth, db, rtdb, storage };
+export { 
+  app, 
+  auth, 
+  db, 
+  rtdb, 
+  storage,
+  // Re-export auth functions to avoid import errors in other files
+  onAuthStateChanged,
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile
+};

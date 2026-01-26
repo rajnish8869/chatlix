@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import { User, Chat, Message, AppSettings, ApiResponse, LogEvent, Wallpaper, CallSession } from '../types';
 import { 
     collection, 
@@ -25,11 +20,6 @@ import {
     or
 } from 'firebase/firestore';
 import { 
-    signInWithEmailAndPassword, 
-    createUserWithEmailAndPassword, 
-    updateProfile 
-} from 'firebase/auth';
-import { 
     ref as dbRef, 
     set, 
     onValue, 
@@ -37,7 +27,15 @@ import {
     remove, 
     serverTimestamp 
 } from 'firebase/database';
-import { auth, db, rtdb, storage } from './firebase';
+import { 
+    auth, 
+    db, 
+    rtdb, 
+    storage, 
+    signInWithEmailAndPassword, 
+    createUserWithEmailAndPassword, 
+    updateProfile 
+} from './firebase';
 
 // Helper to standardise responses
 const success = <T>(data?: T): ApiResponse<T> => ({ success: true, data });

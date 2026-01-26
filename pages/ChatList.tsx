@@ -1,10 +1,89 @@
-import React, { useEffect, useState, useRef } from "react";
+
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
 import { FAB, Icons, ConfirmationModal, Avatar, ScrollDownFab } from "../components/AndroidUI";
 import { useNavigate } from "react-router-dom";
 import { Chat, Message } from "../types";
 import { Virtuoso } from "react-virtuoso";
+
+// Extracted MessagePreview component
+const MessagePreview = React.memo(({
+    message,
+    chatId,
+    isHighlighted,
+    snippet,
+    decryptContent
+}: {
+    message: Message | undefined,
+    chatId: string,
+    isHighlighted: boolean,
+    snippet?: string,
+    decryptContent: (chatId: string, content: string, senderId: string) => Promise<string>
+}) => {
+    const [text, setText] = useState<string>("");
+
+    useEffect(() => {
+        if (!message) {
+            setText("Start a conversation");
+            return;
+        }
+
+        if (isHighlighted && snippet) {
+            setText(snippet);
+            return;
+        }
+
+        if (message.type === 'image') {
+            setText("📷 Photo");
+            return;
+        }
+        
+        if (message.type === 'audio') {
+            setText("🎤 Voice Message");
+            return;
+        }
+
+        if (message.type === 'encrypted') {
+            let isMounted = true;
+            // Use a flag to check if we already have the correct text to avoid flicker?
+            // React handles state updates batching.
+            
+            decryptContent(chatId, message.message, message.sender_id)
+                .then(decrypted => {
+                    if (isMounted) setText(decrypted);
+                })
+                .catch(() => {
+                    if (isMounted) setText("🔒 Encrypted message");
+                });
+            
+            return () => { isMounted = false; };
+        } 
+        
+        setText(message.message);
+
+    }, [message?.message_id, message?.type, isHighlighted, snippet]); 
+    // Excluding decryptContent and chatId (assuming chatId doesn't change for a message_id) to avoid re-runs.
+
+    if (isHighlighted) {
+        return (
+            <span className="truncate">
+                Found: <span className="text-primary font-bold">{text}</span>
+            </span>
+        );
+    }
+
+    if (message?.type === 'encrypted') {
+         return (
+            <span className="flex items-center gap-1">
+               <Icons.Lock className="w-2.5 h-2.5 opacity-70" />
+               <span className="truncate">{text || "Decrypting..."}</span>
+            </span>
+         );
+    }
+
+    return <span className="truncate">{text}</span>;
+});
 
 interface ChatItemWrapperProps {
   children: React.ReactNode;
@@ -62,6 +141,7 @@ const ChatList: React.FC = () => {
   const navigate = useNavigate();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  // Keep decoupledPreviews ONLY for search caching, populated by search action
   const [decryptedPreviews, setDecryptedPreviews] = useState<
     Record<string, string>
   >({});
@@ -82,32 +162,6 @@ const ChatList: React.FC = () => {
     refreshChats();
     loadContacts();
   }, []);
-
-  useEffect(() => {
-    chats.forEach(async (chat) => {
-      const lastMsg =
-        messages[chat.chat_id]?.[messages[chat.chat_id].length - 1] ||
-        chat.last_message;
-      if (
-        lastMsg &&
-        lastMsg.type === "encrypted" &&
-        !decryptedPreviews[lastMsg.message_id]
-      ) {
-        try {
-          const text = await decryptContent(
-            chat.chat_id,
-            lastMsg.message,
-            lastMsg.sender_id,
-          );
-          setDecryptedPreviews((prev) => ({
-            ...prev,
-            [lastMsg.message_id]: text,
-          }));
-        } catch (e) {
-        }
-      }
-    });
-  }, [chats, messages, decryptedPreviews, decryptContent]);
 
   useEffect(() => {
     const runSearch = async () => {
@@ -393,7 +447,6 @@ const ChatList: React.FC = () => {
             const isSelected = selectedChatIds.has(chat.chat_id);
             const typing = isTyping(chat.chat_id);
 
-            let previewText = "";
             let displayTime = "";
             let highlight = false;
 
@@ -426,25 +479,17 @@ const ChatList: React.FC = () => {
             }
             // --- END BLOCKING & PRESENCE LOGIC ---
 
+            let msgToPreview: Message | undefined;
+
             if (item.type === "message") {
-              previewText = item.snippet;
+              msgToPreview = item.message;
               displayTime = item.message.timestamp;
               highlight = true;
             } else {
               const lastMsg = getLastMessage(chat);
               if (lastMsg) {
                 displayTime = lastMsg.timestamp;
-                if (lastMsg.type === "encrypted") {
-                  previewText =
-                    decryptedPreviews[lastMsg.message_id] ||
-                    "Encrypted message";
-                } else if (lastMsg.type === "image") {
-                  previewText = "📷 Photo";
-                } else {
-                  previewText = lastMsg.message;
-                }
-              } else {
-                previewText = "Start a conversation";
+                msgToPreview = lastMsg;
               }
             }
 
@@ -530,24 +575,15 @@ const ChatList: React.FC = () => {
                                 </span>
                               )}
                             <p
-                              className={`text-[13px] truncate ${unread ? "text-text-main font-semibold" : "text-text-sub opacity-70"}`}
+                              className={`text-[13px] w-full flex items-center gap-1 ${unread ? "text-text-main font-semibold" : "text-text-sub opacity-70"}`}
                             >
-                              {!highlight && lastMsg?.type === "encrypted" && (
-                                <span className="mr-0.5 inline-block">
-                                  <Icons.Lock className="w-2.5 h-2.5 relative bottom-[1px]" />
-                                </span>
-                              )}
-
-                              {highlight ? (
-                                <span>
-                                  Found:{" "}
-                                  <span className="text-primary font-bold">
-                                    {previewText}
-                                  </span>
-                                </span>
-                              ) : (
-                                previewText
-                              )}
+                              <MessagePreview 
+                                  message={msgToPreview}
+                                  chatId={chat.chat_id}
+                                  isHighlighted={highlight}
+                                  snippet={item.type === 'message' ? item.snippet : undefined}
+                                  decryptContent={decryptContent}
+                              />
                             </p>
                           </>
                         )}

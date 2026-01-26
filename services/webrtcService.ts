@@ -1,3 +1,4 @@
+
 import { db } from './firebase';
 import { collection, addDoc, onSnapshot, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 
@@ -175,11 +176,20 @@ export class WebRTCService {
 
     async cleanup(callId: string | null) {
         if (this.peerConnection) {
+            this.peerConnection.getReceivers().forEach(receiver => {
+                if(receiver.track) {
+                    receiver.track.stop();
+                    receiver.track.enabled = false;
+                }
+            });
             this.peerConnection.close();
             this.peerConnection = null;
         }
         if (this.localStream) {
-            this.localStream.getTracks().forEach(track => track.stop());
+            this.localStream.getTracks().forEach(track => {
+                track.enabled = false;
+                track.stop();
+            });
             this.localStream = null;
         }
         this.remoteStream = null;

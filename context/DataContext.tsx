@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Chat, Message, AppSettings, User, ApiResponse, Wallpaper, CallSession } from '../types';
 import { useAuth } from './AuthContext';
@@ -97,6 +98,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const sharedKeysCache = useRef<Record<string, { key: CryptoKey, pubKeyStr: string }>>({});
   const groupKeysCache = useRef<Record<string, CryptoKey>>({});
+
+  // Ref to hold chats to allow stable callbacks without closure staleness or constant re-renders
+  const chatsRef = useRef<Chat[]>(chats);
+  const contactsRef = useRef<User[]>(contacts);
+  const rawUsersRef = useRef<User[]>(rawFirestoreUsers);
+
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
+  useEffect(() => { contactsRef.current = contacts; }, [contacts]);
+  useEffect(() => { rawUsersRef.current = rawFirestoreUsers; }, [rawFirestoreUsers]);
 
   // 1. Load Queue from SQLite
   useEffect(() => {
@@ -275,7 +285,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [user]); 
 
-  const getSharedKey = async (otherUserId: string): Promise<CryptoKey | null> => {
+  const getSharedKey = useCallback(async (otherUserId: string): Promise<CryptoKey | null> => {
       if (!user) return null;
       const myPrivKeyStr = await SecureStorage.get(`chatlix_priv_${user.user_id}`);
       if (!myPrivKeyStr) return null;
@@ -286,12 +296,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           targetPubKey = user.publicKey || '';
       } 
       else {
-          const contact = contacts.find(c => c.user_id === otherUserId);
+          const contact = contactsRef.current.find(c => c.user_id === otherUserId);
           if (contact) {
               targetPubKey = contact.publicKey || '';
           } else {
               // Try to find in raw users or fetch
-              const raw = rawFirestoreUsers.find(u => u.user_id === otherUserId);
+              const raw = rawUsersRef.current.find(u => u.user_id === otherUserId);
               if (raw?.publicKey) {
                   targetPubKey = raw.publicKey;
               } else {
@@ -320,39 +330,53 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Key Derivation Failed", e);
           return null;
       }
-  };
+  }, [user]);
 
-  const decryptContent = async (chatId: string, content: string, senderId: string): Promise<string> => {
-      const chat = chats.find(c => c.chat_id === chatId);
+  const loadGroupKey = useCallback(async (chatId: string): Promise<CryptoKey | null> => {
+      // 1. Check Cache
+      if (groupKeysCache.current[chatId]) return groupKeysCache.current[chatId];
+      
+      const chat = chatsRef.current.find(c => c.chat_id === chatId);
+      if (!chat || chat.type !== 'group' || !chat.encrypted_keys || !chat.key_issuer_id) return null;
+
+      try {
+          // 2. Get Encrypted Group Key
+          const myEncryptedKey = chat.encrypted_keys[user?.user_id || ''];
+          if (!myEncryptedKey) return null;
+
+          // 3. Get Shared Key with Issuer
+          const sharedKey = await getSharedKey(chat.key_issuer_id);
+          if (!sharedKey) return null;
+
+          // 4. Decrypt Group Key
+          const groupKeyStr = await decryptMessage(myEncryptedKey, sharedKey);
+          if (groupKeyStr.startsWith("🔒")) throw new Error("Decryption failed");
+
+          const groupKey = await importKeyFromString(groupKeyStr);
+          groupKeysCache.current[chatId] = groupKey;
+          return groupKey;
+      } catch (e) {
+          console.error("Failed to load group key", e);
+          groupKeysCache.current[chatId] = undefined as any; // Invalidate
+          return null;
+      }
+  }, [user, getSharedKey]);
+
+  const decryptContent = useCallback(async (chatId: string, content: string, senderId: string): Promise<string> => {
+      const chat = chatsRef.current.find(c => c.chat_id === chatId);
       if (!chat) return content;
 
       if (chat.type === 'group') {
           if (!chat.encrypted_keys || !chat.key_issuer_id) return content;
-
-          if (groupKeysCache.current[chatId]) {
-              try {
-                 return await decryptMessage(content, groupKeysCache.current[chatId]);
-              } catch (e) {
-                 groupKeysCache.current[chatId] = undefined as any;
-              }
-          }
-
-          const myEncryptedKey = chat.encrypted_keys[user?.user_id || ''];
-          if (!myEncryptedKey) return "🔒 Access Denied (No Key)";
-
+          
           try {
-              const sharedKey = await getSharedKey(chat.key_issuer_id);
-              if (!sharedKey) return "🔒 Key Failure";
-
-              const groupKeyStr = await decryptMessage(myEncryptedKey, sharedKey);
-              if (groupKeyStr.startsWith("🔒")) return "🔒 Decryption Error";
-
-              const groupKey = await importKeyFromString(groupKeyStr);
-              groupKeysCache.current[chatId] = groupKey;
-              
-              return await decryptMessage(content, groupKey);
+             const groupKey = await loadGroupKey(chatId);
+             if (groupKey) {
+                 return await decryptMessage(content, groupKey);
+             }
+             return "🔒 Decryption Failed";
           } catch (e) {
-              return "🔒 Decryption Failed";
+             return "🔒 Error";
           }
       } 
       
@@ -368,7 +392,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       return "🔒 Encrypted Message";
-  };
+  }, [user, getSharedKey, loadGroupKey]);
 
   const loadContacts = useCallback(async () => {
   }, []);
@@ -528,8 +552,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  if (key) { content = await encryptMessage(text, key); type = 'encrypted'; }
             }
         } else if (chat.type === 'group' && chat.encrypted_keys) {
-            if (!groupKeysCache.current[chatId]) await decryptContent(chatId, "WARMUP", user.user_id);
-            const groupKey = groupKeysCache.current[chatId];
+            const groupKey = await loadGroupKey(chatId);
             if (groupKey) { content = await encryptMessage(text, groupKey); type = 'encrypted'; }
             else return; 
         }
@@ -660,10 +683,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const chat = chats.find(c => c.chat_id === chatId);
       if (!chat || chat.type !== 'group' || !chat.encrypted_keys) return;
 
-      if (!groupKeysCache.current[chatId]) {
-          await decryptContent(chatId, "WARMUP", user.user_id);
-      }
-      const groupKey = groupKeysCache.current[chatId];
+      const groupKey = await loadGroupKey(chatId);
       if (!groupKey) throw new Error("Could not decrypt group key to share");
       
       const groupKeyStr = await exportKeyToString(groupKey);
