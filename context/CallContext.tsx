@@ -5,6 +5,7 @@ import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/f
 import { CallSession } from '../types';
 import { webRTCService } from '../services/webrtcService';
 import { CallOverlay } from '../components/CallOverlay';
+import { notificationService } from '../services/notificationService';
 
 interface CallContextType {
     callStatus: 'idle' | 'incoming' | 'outgoing' | 'connected';
@@ -114,6 +115,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
 
             const callId = await webRTCService.createCall(user.user_id, calleeId, type);
+            
+            // Trigger Push Notification for the call
+            notificationService.triggerCallNotification(calleeId, callId, user.username, type);
             
             const newCall: CallSession = {
                 call_id: callId,

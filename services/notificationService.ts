@@ -39,7 +39,7 @@ export const notificationService = {
                 console.error('Push Registration Error: ', error);
             });
 
-            // Create notification channel for Android (High Importance)
+            // Create notification channel for Messages (High Importance)
             await PushNotifications.createChannel({
                 id: 'messages',
                 name: 'Messages',
@@ -47,6 +47,17 @@ export const notificationService = {
                 importance: 5,
                 visibility: 1,
                 vibration: true,
+            });
+
+            // Create notification channel for Calls (Max Importance)
+            await PushNotifications.createChannel({
+                id: 'calls',
+                name: 'Calls',
+                description: 'Incoming voice and video calls',
+                importance: 5,
+                visibility: 1,
+                vibration: true,
+                sound: 'default' // Ensure system sound plays
             });
 
         } catch (e) {
@@ -94,6 +105,37 @@ export const notificationService = {
                 });
             } catch (e) {
                 console.error("Failed to trigger notification", e);
+            }
+        });
+    },
+
+    triggerCallNotification: async (
+        recipientId: string,
+        callId: string,
+        senderName: string,
+        callType: 'audio' | 'video'
+    ) => {
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+
+        currentUser.getIdToken().then(async (token) => {
+             try {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        recipientId,
+                        senderName,
+                        type: 'call',
+                        callId,
+                        callType
+                    })
+                });
+            } catch (e) {
+                console.error("Failed to trigger call notification", e);
             }
         });
     }

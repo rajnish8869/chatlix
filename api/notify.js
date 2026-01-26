@@ -37,7 +37,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { recipientId, title, body, chatId, senderName } = req.body;
+    const { recipientId, title, body, chatId, senderName, type, callId, callType } = req.body;
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -74,29 +74,58 @@ export default async function handler(req, res) {
     }
 
     // 4. Construct Notification
-    // Privacy: We do NOT send the message content in the push payload for E2EE chats.
-    // We send a generic "New Message" or just the sender name.
-    const messagePayload = {
-      notification: {
-        title: senderName || 'Chatlix',
-        body: body || 'You have a new encrypted message',
-      },
-      data: {
-        chatId: chatId,
-        type: 'message',
-        click_action: 'CHATLIX_OPEN_CHAT' // Used by Android intent filter if needed
-      },
-      tokens: tokens,
-      android: {
-        priority: 'high',
-        notification: {
-            sound: 'default',
-            channelId: 'messages',
-            priority: 'high',
-            visibility: 'private' // Hide content on lock screen if secure
-        }
-      }
-    };
+    let messagePayload;
+
+    if (type === 'call') {
+         messagePayload = {
+            notification: {
+                title: 'Incoming Call',
+                body: `${senderName} is calling you (${callType})...`
+            },
+            data: {
+                type: 'call',
+                callId: callId || '',
+                callType: callType || 'audio',
+                click_action: 'CHATLIX_OPEN_CALL'
+            },
+            tokens: tokens,
+            android: {
+                priority: 'high',
+                ttl: 60 * 1000, // 60 seconds expiration for calls
+                notification: {
+                    channelId: 'calls',
+                    priority: 'high',
+                    visibility: 'public',
+                    sound: 'default',
+                    clickAction: 'CHATLIX_OPEN_CALL'
+                }
+            }
+         };
+    } else {
+        // Standard Message Notification
+        // Privacy: We do NOT send the message content in the push payload for E2EE chats.
+        messagePayload = {
+            notification: {
+                title: senderName || 'Chatlix',
+                body: body || 'You have a new encrypted message',
+            },
+            data: {
+                chatId: chatId,
+                type: 'message',
+                click_action: 'CHATLIX_OPEN_CHAT'
+            },
+            tokens: tokens,
+            android: {
+                priority: 'high',
+                notification: {
+                    sound: 'default',
+                    channelId: 'messages',
+                    priority: 'high',
+                    visibility: 'private'
+                }
+            }
+        };
+    }
 
     // 5. Send Multicast
     const response = await admin.messaging().sendEachForMulticast(messagePayload);
