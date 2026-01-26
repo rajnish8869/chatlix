@@ -1,14 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -22,6 +11,7 @@ import {
   Avatar,
   ImageViewer,
   BottomSheet,
+  AlertModal,
 } from "../components/AndroidUI";
 import { LinkPreview } from "../components/LinkPreview";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
@@ -502,6 +492,7 @@ const ChatDetail: React.FC = () => {
   const [dragDistance, setDragDistance] = useState(0);
   
   const isPressingRef = useRef(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const isNative = (window as any).Capacitor?.isNative;
 
@@ -756,7 +747,7 @@ const ChatDetail: React.FC = () => {
     setIsPreparing(true);
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("Audio recording is not supported on this device/browser.");
+        setVoiceError("Audio recording is not supported on this device/browser.");
         setIsPreparing(false);
         isPressingRef.current = false;
         return;
@@ -805,7 +796,7 @@ const ChatDetail: React.FC = () => {
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
           errorMessage = "No microphone found.";
       }
-      alert(errorMessage);
+      setVoiceError(errorMessage);
     }
   };
 
@@ -1335,6 +1326,13 @@ const ChatDetail: React.FC = () => {
         isOpen={viewerOpen}
         src={viewerSrc}
         onClose={() => setViewerOpen(false)}
+      />
+
+      <AlertModal 
+        isOpen={!!voiceError} 
+        onClose={() => setVoiceError(null)} 
+        title="Microphone Error" 
+        message={voiceError || ''} 
       />
 
       <BottomSheet

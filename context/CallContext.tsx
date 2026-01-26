@@ -6,6 +6,7 @@ import { CallSession } from '../types';
 import { webRTCService } from '../services/webrtcService';
 import { CallOverlay } from '../components/CallOverlay';
 import { notificationService } from '../services/notificationService';
+import { AlertModal } from '../components/AndroidUI';
 
 interface CallContextType {
     callStatus: 'idle' | 'incoming' | 'outgoing' | 'connected';
@@ -37,6 +38,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
+
+    // Alert State
+    const [alertError, setAlertError] = useState<{title: string, message: string} | null>(null);
 
     // Refs to access latest state inside onSnapshot closures
     const incomingCallRef = useRef<CallSession | null>(null);
@@ -140,7 +144,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }, (error) => {
                 console.error("Error listening to call updates:", error);
                 endCall(false); 
-                alert("Call failed: Permission denied or connection lost.");
+                setAlertError({ title: "Call Failed", message: "Call failed: Permission denied or connection lost." });
             });
             
         } catch (e: any) {
@@ -158,7 +162,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 msg = "Camera does not support the requested quality.";
             }
             
-            alert(msg);
+            setAlertError({ title: "Call Failed", message: msg });
         }
     };
 
@@ -297,6 +301,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }}>
             {children}
             <CallOverlay />
+            <AlertModal 
+                isOpen={!!alertError} 
+                onClose={() => setAlertError(null)} 
+                title={alertError?.title || ''} 
+                message={alertError?.message || ''} 
+            />
         </CallContext.Provider>
     );
 };

@@ -1,10 +1,9 @@
-
 import React, { useState, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
 import { useTheme, Theme } from "../context/ThemeContext";
 import { useSecurity } from "../context/SecurityContext";
-import { TopBar, Button, Icons, Input, Avatar } from "../components/AndroidUI";
+import { TopBar, Button, Icons, Input, Avatar, AlertModal } from "../components/AndroidUI";
 import { notificationService } from "../services/notificationService";
 
 const Settings: React.FC = () => {
@@ -17,6 +16,8 @@ const Settings: React.FC = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  
+  const [showTestAlert, setShowTestAlert] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -59,7 +60,7 @@ const Settings: React.FC = () => {
 
   const handleTestNotification = async () => {
       if (!user) return;
-      alert("Sending test notification in 5 seconds... Please close the app or lock your screen now.");
+      setShowTestAlert(true);
       
       setTimeout(async () => {
           await notificationService.triggerNotification(
@@ -272,6 +273,13 @@ const Settings: React.FC = () => {
         <p className="text-center text-[10px] text-text-sub opacity-30 pt-6 font-mono">
           Chatlix v3.3 • Build 2024.12
         </p>
+
+        <AlertModal 
+            isOpen={showTestAlert} 
+            onClose={() => setShowTestAlert(false)} 
+            title="Testing Notifications" 
+            message="Sending test notification in 5 seconds... Please close the app or lock your screen now." 
+        />
       </div>
     </div>
   );

@@ -651,6 +651,46 @@ export const BottomSheet: React.FC<{
   );
 };
 
+// --- Alert Modal ---
+export const AlertModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  message: string;
+  buttonText?: string;
+}> = ({
+  isOpen,
+  onClose,
+  title,
+  message,
+  buttonText = "OK",
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-fade-in">
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative bg-surface w-full max-w-sm rounded-[32px] p-6 shadow-2xl border border-white/10 animate-scale-in">
+        <h3 className="text-lg font-bold text-text-main mb-2 text-center">
+          {title}
+        </h3>
+        <p className="text-text-sub text-center mb-6 text-sm leading-relaxed opacity-80">
+          {message}
+        </p>
+        <button
+          onClick={onClose}
+          className="w-full py-3 rounded-xl font-bold text-white text-sm transition-all tap-active bg-gradient-to-r from-primary to-primary/90 shadow-lg shadow-primary/30 hover:shadow-primary/40"
+        >
+          {buttonText}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // --- Confirmation Modal ---
 export const ConfirmationModal: React.FC<{
   isOpen: boolean;

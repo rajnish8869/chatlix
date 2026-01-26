@@ -1,12 +1,8 @@
-
-
-
-
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
-import { TopBar, Icons, Avatar, ConfirmationModal, BottomSheet, Input } from "../components/AndroidUI";
+import { TopBar, Icons, Avatar, ConfirmationModal, BottomSheet, Input, AlertModal } from "../components/AndroidUI";
 import { User, Wallpaper } from "../types";
 
 const GRADIENTS = [
@@ -68,6 +64,8 @@ const ChatInfo: React.FC = () => {
       isDestructive: boolean;
       confirmText: string;
   }>({ isOpen: false, title: "", message: "", action: async () => {}, isDestructive: false, confirmText: "" });
+
+  const [errorAlert, setErrorAlert] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
 
   useEffect(() => {
     loadContacts();
@@ -154,7 +152,7 @@ const ChatInfo: React.FC = () => {
           await addGroupMember(chatId!, userId);
           setShowAddModal(false);
       } catch (e) {
-          alert("Failed to add member");
+          setErrorAlert({ isOpen: true, message: "Failed to add member. Please try again." });
       }
       setLoadingAction(false);
   };
@@ -552,6 +550,13 @@ const ChatInfo: React.FC = () => {
           message={confirmModal.message}
           confirmText={confirmModal.confirmText}
           isDestructive={confirmModal.isDestructive}
+      />
+
+      <AlertModal 
+        isOpen={errorAlert.isOpen} 
+        onClose={() => setErrorAlert({isOpen: false, message: ''})} 
+        title="Error" 
+        message={errorAlert.message} 
       />
     </div>
   );
