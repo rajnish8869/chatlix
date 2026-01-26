@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -254,7 +255,7 @@ const ChatInfo: React.FC = () => {
         className="border-b border-white/5"
       />
 
-      <div className="flex-1 overflow-y-auto pb-10 min-h-0">
+      <div className="flex-1 overflow-y-auto pb-[calc(2.5rem+env(safe-area-inset-bottom))] min-h-0">
         <div className="flex flex-col items-center pt-8 pb-10 px-6 relative">
           <div className="relative mb-6 group">
              <div 

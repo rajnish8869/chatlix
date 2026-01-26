@@ -93,13 +93,6 @@ export const CallOverlay: React.FC = () => {
     // --- ACTIVE / OUTGOING UI ---
     if ((callStatus === 'connected' || callStatus === 'outgoing') && activeCall) {
         const isVideoCall = activeCall.type === 'video';
-        const peerId = activeCall.callerId === activeCall.calleeId ? activeCall.calleeId : (activeCall.callerId === contacts.find(c=>c.user_id===activeCall.callerId)?.user_id ? activeCall.calleeId : activeCall.callerId);
-        // Simplification: In P2P, if I am caller, peer is callee.
-        // Actually, we need to know who the "Other" is relative to "Me".
-        // The activeCall object has raw IDs.
-        // Let's assume we pass "peer" info into the context or derive it.
-        // For now, let's just use "Connected" if we can't easily derive.
-        // Actually, we can get it from the `activeCall` if we know our own ID. But `useCall` hook manages that.
         
         return (
             <div className="fixed inset-0 z-[200] bg-black flex flex-col">
@@ -152,7 +145,7 @@ export const CallOverlay: React.FC = () => {
                 </div>
 
                 {/* --- Controls --- */}
-                <div className="absolute bottom-10 left-0 w-full flex items-center justify-center gap-6 pb-safe">
+                <div className="absolute left-0 w-full flex items-center justify-center gap-6 bottom-[calc(2.5rem+env(safe-area-inset-bottom))]">
                     <button 
                         onClick={toggleMute}
                         className={`p-4 rounded-full backdrop-blur-md transition-all ${isMuted ? 'bg-white text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}

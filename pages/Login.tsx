@@ -42,7 +42,7 @@ const Login: React.FC = () => {
       <div className="absolute bottom-[-20%] right-[-15%] w-[70%] h-[70%] bg-purple-600/10 rounded-full blur-3xl animate-pulse pointer-events-none" />
 
       {/* Main Content Area: Logo & Branding - Takes remaining space */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 w-full min-h-0">
+      <div className="flex-1 flex flex-col items-center justify-center p-6 pt-[calc(1.5rem+env(safe-area-inset-top))] z-10 w-full min-h-0">
         <div className="animate-fade-in flex flex-col items-center justify-center">
           {/* Updated Logo: Chat Bubble Style */}
           <div className="w-28 h-28 rounded-[32px] bg-gradient-to-br from-primary via-indigo-500 to-purple-600 shadow-2xl shadow-primary/30 mb-6 flex items-center justify-center transform hover:scale-105 transition-transform duration-500 relative overflow-hidden group">

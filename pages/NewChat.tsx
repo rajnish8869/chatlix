@@ -98,7 +98,7 @@ const NewChat: React.FC = () => {
         className="border-b border-white/5"
       />
 
-      <div className="px-4 py-3 sticky top-16 z-20 bg-background/95 backdrop-blur-xl border-b border-white/5">
+      <div className="px-4 py-3 sticky z-20 bg-background/95 backdrop-blur-xl border-b border-white/5 top-[calc(3.5rem+env(safe-area-inset-top))]">
         <div className="relative">
           <Input
             autoFocus
