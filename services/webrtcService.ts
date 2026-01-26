@@ -142,7 +142,15 @@ export class WebRTCService {
         const callDocRef = doc(db, 'calls', callId);
         const candidatesCol = collection(callDocRef, 'candidates');
         const callSnap = await getDoc(callDocRef);
+        
+        if (!callSnap.exists()) {
+            throw new Error("Call session not found (caller may have hung up)");
+        }
+
         const callData = callSnap.data();
+        if (!callData || !callData.offer) {
+            throw new Error("Invalid call data: Offer is missing");
+        }
 
         this.peerConnection.onicecandidate = (event) => {
             if(event.candidate) {
@@ -150,7 +158,7 @@ export class WebRTCService {
             }
         };
 
-        const offerDescription = callData?.offer;
+        const offerDescription = callData.offer;
         await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offerDescription));
 
         const answerDescription = await this.peerConnection.createAnswer();
