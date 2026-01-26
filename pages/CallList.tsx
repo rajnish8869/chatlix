@@ -74,8 +74,9 @@ const CallList: React.FC = () => {
                 </div>
             ) : (
                 <Virtuoso
-                    className="flex-1 pb-32 no-scrollbar"
+                    className="flex-1 no-scrollbar"
                     data={callHistory}
+                    components={{ Footer: () => <div className="h-32" /> }}
                     itemContent={(index, call) => {
                         const isOutgoing = call.callerId === user?.user_id;
                         const isMissed = !isOutgoing && (call.status === 'rejected' || (call.status === 'ended' && (!call.duration || call.duration === 0)));

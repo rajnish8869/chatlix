@@ -1,8 +1,7 @@
-
 import React, { useEffect, useState, useRef } from "react";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
-import { FAB, Icons, ConfirmationModal, Avatar } from "../components/AndroidUI";
+import { FAB, Icons, ConfirmationModal, Avatar, ScrollDownFab } from "../components/AndroidUI";
 import { useNavigate } from "react-router-dom";
 import { Chat, Message } from "../types";
 import { Virtuoso } from "react-virtuoso";
@@ -382,9 +381,10 @@ const ChatList: React.FC = () => {
         </div>
       ) : (
         <Virtuoso
-          className="flex-1 pb-32 no-scrollbar"
+          className="flex-1 no-scrollbar"
           data={data}
           totalCount={data.length}
+          components={{ Footer: () => <div className="h-32" /> }}
           itemContent={(index, item) => {
             const chat = item.chat;
             const chatName = getChatName(chat);
