@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Chat, Message, AppSettings, User, ApiResponse, Wallpaper } from '../types';
 import { useAuth } from './AuthContext';
@@ -16,6 +15,7 @@ import {
 import { SecureStorage } from '../utils/storage';
 import { doc, getDoc } from 'firebase/firestore'; 
 import { db } from '../services/firebase'; 
+import { notificationService } from '../services/notificationService';
 
 // Type alias for unsubscribe function
 type UnsubscribeFunc = () => void;
@@ -562,6 +562,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
         await chatService.sendMessage(chatId, user.user_id, content, type, replyTo, tempId);
+        
+        // --- TRIGGER PUSH NOTIFICATION ---
+        if (chat) {
+            // Determine recipients
+            const recipients = chat.participants.filter(pid => pid !== user.user_id);
+            // In a real scenario, you might loop or send a batch request
+            recipients.forEach(pid => {
+                notificationService.triggerNotification(
+                    pid, 
+                    chatId, 
+                    user.username, 
+                    type === 'encrypted'
+                );
+            });
+        }
+
     } catch (e) {
         await databaseService.addToQueue("SEND_MESSAGE", queuePayload);
         setQueue(prev => [...prev, queuePayload as any]);

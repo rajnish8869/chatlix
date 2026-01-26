@@ -1,6 +1,4 @@
-
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
@@ -16,6 +14,8 @@ import Settings from './pages/Settings';
 import NewChat from './pages/NewChat';
 import { BottomNav } from './components/AndroidUI';
 import { App as CapacitorApp } from '@capacitor/app';
+import { PushNotifications } from '@capacitor/push-notifications';
+import { Capacitor } from '@capacitor/core';
 
 // --- Splash Screen Component ---
 const SplashScreen: React.FC = () => (
@@ -104,21 +104,21 @@ const AppLayout: React.FC = () => {
   );
 };
 
-// Android Back Button Logic Hook
-const AndroidBackButtonHandler = () => {
+// Android Back Button & Notification Handler
+const SystemEventsHandler = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
   React.useEffect(() => {
-    // 1. Handle Hardware Back Button (Android)
+    if (!Capacitor.isNativePlatform()) return;
+
+    // 1. Handle Hardware Back Button
     let backButtonListener: any;
     
-    const setupListener = async () => {
+    const setupBackListener = async () => {
         try {
             backButtonListener = await CapacitorApp.addListener('backButton', ({ canGoBack }) => {
-                // Determine if we are on a "root" screen where back should exit the app
                 const isRootScreen = location.pathname === '/' || location.pathname === '/login';
-
                 if (isRootScreen) {
                     CapacitorApp.exitApp();
                 } else {
@@ -126,13 +126,37 @@ const AndroidBackButtonHandler = () => {
                 }
             });
         } catch (e) {
-            console.warn("Capacitor App plugin not available, back button handling skipped.");
+            console.warn("Back button handler failed", e);
         }
     };
-    
-    setupListener();
+    setupBackListener();
 
-    // 2. Handle Escape Key (Dev/Browser fallback)
+    // 2. Handle Push Notification Clicks
+    // When user taps a notification in the tray
+    let pushListener: any;
+    const setupPushListener = async () => {
+        try {
+            pushListener = await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+                const data = notification.notification.data;
+                if (data && data.chatId) {
+                    console.log("Opening chat from notification:", data.chatId);
+                    navigate(`/chat/${data.chatId}`);
+                }
+            });
+        } catch(e) {
+            console.warn("Push listener setup failed", e);
+        }
+    };
+    setupPushListener();
+
+    return () => {
+        if (backButtonListener) backButtonListener.remove();
+        if (pushListener) pushListener.remove();
+    };
+  }, [location, navigate]);
+
+  // Dev fallback for ESC key
+  React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
             if (location.pathname !== '/' && location.pathname !== '/login') {
@@ -141,11 +165,7 @@ const AndroidBackButtonHandler = () => {
         }
     };
     window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-        if (backButtonListener) backButtonListener.remove();
-        window.removeEventListener('keydown', handleKeyDown);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [location, navigate]);
 
   return null;
@@ -160,7 +180,7 @@ const App: React.FC = () => {
               <CallProvider>
                 <ThemeProvider>
                   <HashRouter>
-                      <AndroidBackButtonHandler />
+                      <SystemEventsHandler />
                       <AppLayout />
                   </HashRouter>
                 </ThemeProvider>

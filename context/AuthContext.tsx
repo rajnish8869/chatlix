@@ -1,5 +1,3 @@
-
-
 import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { chatService } from '../services/chatService';
@@ -8,6 +6,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { generateKeyPair } from '../utils/crypto';
 import { SecureStorage } from '../utils/storage';
+import { notificationService } from '../services/notificationService';
 
 interface AuthContextType {
   user: User | null;
@@ -78,6 +77,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
              // Initialize Presence (RTDB)
              chatService.initializePresence(currentUser.uid);
 
+             // Initialize Push Notifications
+             notificationService.init(currentUser.uid);
+
              // --- Realtime Profile Listener ---
              // This is crucial for "Blocked Users" list updates to reflect immediately
              profileUnsub = onSnapshot(userDocRef, (docSnap) => {
@@ -95,7 +97,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                      enable_groups: data?.enable_groups ?? true,
                      profile_picture: data?.profile_picture,
                      blocked_users: data?.blocked_users || [], // Real-time update here
-                     chat_wallpapers: data?.chat_wallpapers
+                     chat_wallpapers: data?.chat_wallpapers,
+                     fcm_tokens: data?.fcm_tokens
                  };
                  
                  setUser(finalUser);
