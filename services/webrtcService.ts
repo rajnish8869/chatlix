@@ -78,7 +78,7 @@ export class WebRTCService {
         return this.peerConnection;
     }
 
-    async createCall(callerId: string, calleeId: string, type: 'audio'|'video'): Promise<string> {
+    async createCall(callerId: string, calleeId: string, type: 'audio'|'video'|'ptt'): Promise<string> {
         if (!this.peerConnection) throw new Error("PeerConnection not initialized");
 
         const callDocRef = doc(collection(db, 'calls'));
@@ -172,6 +172,15 @@ export class WebRTCService {
                 }
             });
         });
+    }
+
+    // New Method for PTT
+    toggleAudio(enabled: boolean) {
+        if (this.localStream) {
+            this.localStream.getAudioTracks().forEach(track => {
+                track.enabled = enabled;
+            });
+        }
     }
 
     async cleanup(callId: string | null) {

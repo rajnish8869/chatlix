@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -6,6 +7,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { DatabaseProvider } from './context/DatabaseContext';
 import { SecurityProvider } from './context/SecurityContext';
 import { CallProvider } from './context/CallContext';
+import { PTTProvider } from './context/PTTContext';
 import Login from './pages/Login';
 import ChatList from './pages/ChatList';
 import ChatDetail from './pages/ChatDetail';
@@ -193,12 +195,14 @@ const App: React.FC = () => {
         <SecurityProvider>
           <DataProvider>
               <CallProvider>
-                <ThemeProvider>
-                  <HashRouter>
-                      <SystemEventsHandler />
-                      <AppLayout />
-                  </HashRouter>
-                </ThemeProvider>
+                <PTTProvider>
+                  <ThemeProvider>
+                    <HashRouter>
+                        <SystemEventsHandler />
+                        <AppLayout />
+                    </HashRouter>
+                  </ThemeProvider>
+                </PTTProvider>
             </CallProvider>
           </DataProvider>
         </SecurityProvider>
