@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useEffect, useState } from "react";
 // @ts-ignore
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -727,7 +723,7 @@ export const ImageViewer: React.FC<{
     >
       <button
         onClick={onClose}
-        className="absolute top-8 right-6 p-2 bg-white/10 backdrop-blur-md rounded-full text-white hover:bg-white/20 transition-colors z-[160]"
+        className="absolute top-[calc(1.5rem+env(safe-area-inset-top))] right-6 p-2 bg-white/10 backdrop-blur-md rounded-full text-white hover:bg-white/20 transition-colors z-[160]"
       >
         <Icons.Close className="w-5 h-5" />
       </button>

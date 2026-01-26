@@ -53,7 +53,7 @@ export const CallOverlay: React.FC = () => {
         const caller = getPeerInfo(incomingCall.callerId);
         
         return (
-            <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/60 backdrop-blur-md">
+            <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/60 backdrop-blur-md pt-[env(safe-area-inset-top)]">
                 <div className="relative">
                     <div className="absolute inset-0 bg-primary/30 rounded-full animate-ping blur-xl" />
                     <Avatar 
@@ -127,7 +127,7 @@ export const CallOverlay: React.FC = () => {
 
                     {/* --- Local PIP (Only if video call) --- */}
                     {isVideoCall && (
-                        <div className="absolute top-12 right-4 w-32 h-48 bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/20">
+                        <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 w-32 h-48 bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/20">
                             <video 
                                 ref={localVideoRef} 
                                 autoPlay 
