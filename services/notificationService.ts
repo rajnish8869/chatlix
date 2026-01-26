@@ -138,5 +138,36 @@ export const notificationService = {
                 console.error("Failed to trigger call notification", e);
             }
         });
+    },
+
+    triggerMissedCallNotification: async (
+        recipientId: string,
+        callId: string,
+        senderName: string,
+        callType: 'audio' | 'video'
+    ) => {
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+
+        currentUser.getIdToken().then(async (token) => {
+             try {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        recipientId,
+                        senderName,
+                        type: 'missed_call',
+                        callId,
+                        callType
+                    })
+                });
+            } catch (e) {
+                console.error("Failed to trigger missed call notification", e);
+            }
+        });
     }
 };

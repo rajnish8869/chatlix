@@ -211,6 +211,19 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const endCall = async (updateDb: boolean = true) => {
         const id = activeCall?.call_id || incomingCall?.call_id;
         
+        // Capture current call state before nullifying to check for missed call scenario
+        const currentCall = activeCall;
+
+        // Check if we are the caller, canceling an outgoing call that hasn't been answered yet
+        if (currentCall && currentCall.callerId === user?.user_id && currentCall.status === 'offering') {
+             notificationService.triggerMissedCallNotification(
+                 currentCall.calleeId,
+                 currentCall.call_id,
+                 user.username,
+                 currentCall.type
+             );
+        }
+        
         if (id && updateDb) {
             await webRTCService.cleanup(id);
         } else {

@@ -86,7 +86,6 @@ export default async function handler(req, res) {
                 type: 'call',
                 callId: callId || '',
                 callType: callType || 'audio'
-                // Removed click_action to let default intent open the app
             },
             tokens: tokens,
             android: {
@@ -96,8 +95,30 @@ export default async function handler(req, res) {
                     channelId: 'calls',
                     priority: 'high',
                     visibility: 'public',
-                    sound: 'default'
-                    // Removed clickAction to let default intent open the app
+                    sound: 'default',
+                    tag: `call_${callId}` // Replacement tag
+                }
+            }
+         };
+    } else if (type === 'missed_call') {
+         messagePayload = {
+            notification: {
+                title: 'Missed Call',
+                body: `You missed a ${callType || 'audio'} call from ${senderName}`
+            },
+            data: {
+                type: 'missed_call',
+                callId: callId || '',
+                chatId: chatId || '', // Optional, allows navigation to chat
+            },
+            tokens: tokens,
+            android: {
+                priority: 'high',
+                notification: {
+                    channelId: 'calls', 
+                    priority: 'high',
+                    visibility: 'public',
+                    tag: `call_${callId}` // Same tag will replace the 'Incoming Call' notification
                 }
             }
          };
