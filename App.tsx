@@ -147,9 +147,15 @@ const SystemEventsHandler = () => {
         try {
             pushListener = await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
                 const data = notification.notification.data;
-                if (data && data.chatId) {
-                    console.log("Opening chat from notification:", data.chatId);
-                    navigate(`/chat/${data.chatId}`);
+                console.log("Push action performed:", JSON.stringify(data));
+                if (data) {
+                    if (data.type === 'call') {
+                         console.log("Call notification tapped - App coming to foreground.");
+                         // CallOverlay in CallProvider will handle the UI once connected.
+                    } else if (data.chatId) {
+                         console.log("Opening chat from notification:", data.chatId);
+                         navigate(`/chat/${data.chatId}`);
+                    }
                 }
             });
         } catch(e) {

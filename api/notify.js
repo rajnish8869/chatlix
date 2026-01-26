@@ -85,8 +85,8 @@ export default async function handler(req, res) {
             data: {
                 type: 'call',
                 callId: callId || '',
-                callType: callType || 'audio',
-                click_action: 'CHATLIX_OPEN_CALL'
+                callType: callType || 'audio'
+                // Removed click_action to let default intent open the app
             },
             tokens: tokens,
             android: {
@@ -96,8 +96,8 @@ export default async function handler(req, res) {
                     channelId: 'calls',
                     priority: 'high',
                     visibility: 'public',
-                    sound: 'default',
-                    clickAction: 'CHATLIX_OPEN_CALL'
+                    sound: 'default'
+                    // Removed clickAction to let default intent open the app
                 }
             }
          };
@@ -111,8 +111,7 @@ export default async function handler(req, res) {
             },
             data: {
                 chatId: chatId,
-                type: 'message',
-                click_action: 'CHATLIX_OPEN_CHAT'
+                type: 'message'
             },
             tokens: tokens,
             android: {
