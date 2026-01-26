@@ -18,7 +18,6 @@ import {
 import { LinkPreview } from "../components/LinkPreview";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { Message } from "../types";
-import { WalkieTalkieMode } from '../components/WalkieTalkieMode';
 
 const REACTIONS = ["❤️", "😂", "😮", "😢", "😡", "👍"];
 
@@ -519,8 +518,6 @@ const ChatDetail: React.FC = () => {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [replyPreview, setReplyPreview] = useState<string>("");
 
-  const [showPTTModal, setShowPTTModal] = useState(false);
-
   const typingTimeoutRef = useRef<any>(null);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -1020,16 +1017,10 @@ const ChatDetail: React.FC = () => {
           await trustUser(otherUserId); 
       }
       
-      setShowPTTModal(true);
+      // The Global WalkieTalkieMode component will react to the 'connected' state or incoming state
+      // once startSession initiates the call.
       await startSession(otherUserId);
   };
-
-  // Handle active PTT session launched from elsewhere (e.g. notification)
-  useEffect(() => {
-      if (isPTTActive && activeMessage === null && !showPTTModal) {
-          setShowPTTModal(true);
-      }
-  }, [isPTTActive]);
 
   return (
     <div className="flex flex-col h-full w-full bg-background overflow-hidden relative">
@@ -1370,10 +1361,6 @@ const ChatDetail: React.FC = () => {
         title="Microphone Error" 
         message={voiceError || ''} 
       />
-
-      {showPTTModal && (
-          <WalkieTalkieMode onClose={() => setShowPTTModal(false)} />
-      )}
 
       <BottomSheet
         isOpen={!!activeMessage}

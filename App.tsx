@@ -16,6 +16,7 @@ import Settings from './pages/Settings';
 import NewChat from './pages/NewChat';
 import CallList from './pages/CallList';
 import { BottomNav } from './components/AndroidUI';
+import { WalkieTalkieMode } from './components/WalkieTalkieMode';
 import { App as CapacitorApp } from '@capacitor/app';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
@@ -111,6 +112,9 @@ const AppLayout: React.FC = () => {
       {showBottomNav && (
         <BottomNav activeTab={getActiveTab()} onTabChange={handleTabChange} />
       )}
+      
+      {/* Global Walkie Talkie Overlay */}
+      <WalkieTalkieMode />
     </div>
   );
 };
