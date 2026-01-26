@@ -18,25 +18,26 @@ export const WalkieTalkieMode: React.FC<{ onClose: () => void }> = ({ onClose })
         untrustUser
     } = usePTT();
     
-    const { activeCall, endCall } = useCall();
+    const { activeCall, endCall, callStatus } = useCall();
     const { contacts } = useData();
     const [dragY, setDragY] = useState(0);
     const startYRef = React.useRef<number | null>(null);
 
-    if (!isPTTActive || !activeCall) return null;
+    // Show only if active call exists and is PTT type
+    if (!activeCall || activeCall.type !== 'ptt') return null;
 
     const contact = contacts.find(c => c.user_id === activeCall.calleeId || c.user_id === activeCall.callerId);
     
     // Handlers for PTT Button
     const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
-        if (isMicLocked) return;
+        if (isMicLocked || !isPTTActive) return;
         const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
         startYRef.current = clientY;
         pressToTalk();
     };
 
     const handleTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
-        if (!isTalking || isMicLocked || startYRef.current === null) return;
+        if (!isTalking || isMicLocked || startYRef.current === null || !isPTTActive) return;
         const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
         const diff = startYRef.current - clientY;
         if (diff > 0) setDragY(diff);
@@ -55,6 +56,15 @@ export const WalkieTalkieMode: React.FC<{ onClose: () => void }> = ({ onClose })
             startYRef.current = null;
             setDragY(0);
         }
+    };
+
+    const getStatusText = () => {
+        if (callStatus === 'connected') {
+            if (isReceiving) return "RECEIVING...";
+            if (isTalking) return "TRANSMITTING...";
+            return "STANDBY";
+        }
+        return "CONNECTING...";
     };
 
     return (
@@ -78,7 +88,7 @@ export const WalkieTalkieMode: React.FC<{ onClose: () => void }> = ({ onClose })
                     />
                     <h2 className="mt-4 text-2xl font-black tracking-tight">{contact?.username}</h2>
                     <span className={`text-sm font-bold tracking-widest uppercase ${isReceiving ? 'text-primary animate-pulse' : 'text-white/40'}`}>
-                        {isReceiving ? "RECEIVING..." : (isTalking ? "TRANSMITTING..." : "STANDBY")}
+                        {getStatusText()}
                     </span>
                 </div>
                 <button onClick={() => endCall()} className="p-2 bg-danger/20 text-danger rounded-full">
@@ -117,7 +127,7 @@ export const WalkieTalkieMode: React.FC<{ onClose: () => void }> = ({ onClose })
                     </button>
                 ) : (
                     <div 
-                        className="relative"
+                        className={`relative ${!isPTTActive ? 'opacity-50 grayscale pointer-events-none' : ''}`}
                         onTouchStart={handleTouchStart}
                         onTouchMove={handleTouchMove}
                         onTouchEnd={handleTouchEnd}
