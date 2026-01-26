@@ -7,10 +7,7 @@ const servers = {
     {
       urls: [
         "stun:stun.l.google.com:19302",
-        "stun:stun1.l.google.com:19302",
-        "stun:stun2.l.google.com:19302",
-        "stun:stun3.l.google.com:19302",
-        "stun:stun4.l.google.com:19302"
+        "stun:global.stun.twilio.com:3478"
       ],
     },
   ],
@@ -81,7 +78,7 @@ export class WebRTCService {
         return this.peerConnection;
     }
 
-    async createCall(callerId: string, calleeId: string, type: 'audio'|'video'|'ptt'): Promise<string> {
+    async createCall(callerId: string, calleeId: string, type: 'audio'|'video'): Promise<string> {
         if (!this.peerConnection) throw new Error("PeerConnection not initialized");
 
         const callDocRef = doc(collection(db, 'calls'));
@@ -142,15 +139,7 @@ export class WebRTCService {
         const callDocRef = doc(db, 'calls', callId);
         const candidatesCol = collection(callDocRef, 'candidates');
         const callSnap = await getDoc(callDocRef);
-        
-        if (!callSnap.exists()) {
-            throw new Error("Call session not found (caller may have hung up)");
-        }
-
         const callData = callSnap.data();
-        if (!callData || !callData.offer) {
-            throw new Error("Invalid call data: Offer is missing");
-        }
 
         this.peerConnection.onicecandidate = (event) => {
             if(event.candidate) {
@@ -158,7 +147,7 @@ export class WebRTCService {
             }
         };
 
-        const offerDescription = callData.offer;
+        const offerDescription = callData?.offer;
         await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offerDescription));
 
         const answerDescription = await this.peerConnection.createAnswer();
@@ -183,15 +172,6 @@ export class WebRTCService {
                 }
             });
         });
-    }
-
-    // New Method for PTT
-    toggleAudio(enabled: boolean) {
-        if (this.localStream) {
-            this.localStream.getAudioTracks().forEach(track => {
-                track.enabled = enabled;
-            });
-        }
     }
 
     async cleanup(callId: string | null) {

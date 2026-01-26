@@ -244,17 +244,6 @@ export const chatService = {
       }
   },
 
-  // --- PTT TRUST ---
-  updateTrustedPTT: async (currentUserId: string, targetUserId: string, trust: boolean) => {
-      try {
-          await updateDoc(doc(db, 'users', currentUserId), {
-              ptt_auto_accept_ids: trust ? arrayUnion(targetUserId) : arrayRemove(targetUserId)
-          });
-      } catch(e) {
-          console.error("Failed to update PTT trust", e);
-      }
-  },
-
   // --- WALLPAPERS ---
 
   setGroupWallpaper: async (chatId: string, wallpaper: Wallpaper | null) => {

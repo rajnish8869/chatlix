@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -7,7 +6,6 @@ import { ThemeProvider } from './context/ThemeContext';
 import { DatabaseProvider } from './context/DatabaseContext';
 import { SecurityProvider } from './context/SecurityContext';
 import { CallProvider } from './context/CallContext';
-import { PTTProvider } from './context/PTTContext';
 import Login from './pages/Login';
 import ChatList from './pages/ChatList';
 import ChatDetail from './pages/ChatDetail';
@@ -16,7 +14,6 @@ import Settings from './pages/Settings';
 import NewChat from './pages/NewChat';
 import CallList from './pages/CallList';
 import { BottomNav } from './components/AndroidUI';
-import { WalkieTalkieMode } from './components/WalkieTalkieMode';
 import { App as CapacitorApp } from '@capacitor/app';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
@@ -112,9 +109,6 @@ const AppLayout: React.FC = () => {
       {showBottomNav && (
         <BottomNav activeTab={getActiveTab()} onTabChange={handleTabChange} />
       )}
-      
-      {/* Global Walkie Talkie Overlay */}
-      <WalkieTalkieMode />
     </div>
   );
 };
@@ -199,14 +193,12 @@ const App: React.FC = () => {
         <SecurityProvider>
           <DataProvider>
               <CallProvider>
-                <PTTProvider>
-                  <ThemeProvider>
-                    <HashRouter>
-                        <SystemEventsHandler />
-                        <AppLayout />
-                    </HashRouter>
-                  </ThemeProvider>
-                </PTTProvider>
+                <ThemeProvider>
+                  <HashRouter>
+                      <SystemEventsHandler />
+                      <AppLayout />
+                  </HashRouter>
+                </ThemeProvider>
             </CallProvider>
           </DataProvider>
         </SecurityProvider>

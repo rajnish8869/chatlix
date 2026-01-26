@@ -4,7 +4,6 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
 import { useCall } from '../context/CallContext';
-import { usePTT } from '../context/PTTContext';
 import {
   TopBar,
   Icons,
@@ -456,8 +455,6 @@ const ChatDetail: React.FC = () => {
   const location = useLocation();
   const { user } = useAuth();
   const { startCall } = useCall();
-  const { startSession, isPTTActive, trustUser } = usePTT();
-
   const {
     messages,
     loadMessages,
@@ -1005,23 +1002,6 @@ const ChatDetail: React.FC = () => {
       }
   };
 
-  // PTT Handlers
-  const handleStartPTT = async () => {
-      if (!otherUserId) return;
-      
-      // First time trust check
-      if (!user?.ptt_auto_accept_ids?.includes(otherUserId) && !otherUser?.ptt_auto_accept_ids?.includes(user?.user_id || '')) {
-          // If we haven't established trust, just open it normally, receiver will be prompted
-          // We can also trigger a pre-trust modal here if needed.
-          // For now, trusting automatically on initiate is aggressive, so we just trust locally for UI smoothness
-          await trustUser(otherUserId); 
-      }
-      
-      // The Global WalkieTalkieMode component will react to the 'connected' state or incoming state
-      // once startSession initiates the call.
-      await startSession(otherUserId);
-  };
-
   return (
     <div className="flex flex-col h-full w-full bg-background overflow-hidden relative">
         {/* --- Wallpaper Layer --- */}
@@ -1113,12 +1093,6 @@ const ChatDetail: React.FC = () => {
           actions={
               currentChat?.type === 'private' && !iBlockedThem && !theyBlockedMe && (
                 <div className="flex items-center gap-1">
-                    <button 
-                        onClick={handleStartPTT}
-                        className="p-2 text-text-main hover:bg-surface-highlight rounded-full transition-colors"
-                    >
-                        <Icons.Walkie className="w-5 h-5" />
-                    </button>
                     <button 
                         onClick={() => handleStartCall('audio')}
                         className="p-2 text-text-main hover:bg-surface-highlight rounded-full transition-colors"

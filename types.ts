@@ -1,4 +1,5 @@
 
+
 export interface User {
   user_id: string; // Matches Firebase Auth UID
   username: string;
@@ -13,7 +14,6 @@ export interface User {
   blocked_users?: string[]; // Array of User IDs blocked by this user
   chat_wallpapers?: Record<string, Wallpaper>; // Map of chatId -> Wallpaper (Personal overrides)
   fcm_tokens?: string[]; // Array of active FCM tokens for push notifications
-  ptt_auto_accept_ids?: string[]; // IDs of users trusted for instant PTT
 }
 
 export interface Chat {
@@ -59,7 +59,7 @@ export interface CallSession {
     call_id: string;
     callerId: string;
     calleeId: string;
-    type: 'audio' | 'video' | 'ptt';
+    type: 'audio' | 'video';
     status: 'offering' | 'connected' | 'ended' | 'rejected';
     offer?: any;
     answer?: any;

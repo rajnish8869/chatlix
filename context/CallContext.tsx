@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from '../services/firebase';
@@ -15,7 +14,7 @@ interface CallContextType {
     incomingCall: CallSession | null;
     localStream: MediaStream | null;
     remoteStream: MediaStream | null;
-    startCall: (calleeId: string, type: 'audio' | 'video' | 'ptt') => Promise<void>;
+    startCall: (calleeId: string, type: 'audio' | 'video') => Promise<void>;
     acceptCall: () => Promise<void>;
     rejectCall: () => Promise<void>;
     endCall: () => Promise<void>;
@@ -46,8 +45,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Refs to access latest state inside onSnapshot closures
     const incomingCallRef = useRef<CallSession | null>(null);
     const callStatusRef = useRef<string>('idle');
-    // Flag to handle instant PTT connection to avoid duplicate processing
-    const isAutoAccepting = useRef(false);
 
     useEffect(() => {
         incomingCallRef.current = incomingCall;
@@ -74,27 +71,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     // Ignore old calls (> 1 min)
                     if (Date.now() - data.timestamp < 60000) {
                         const callSession = { ...data, call_id: change.doc.id };
-                        
-                        // --- PTT AUTO-ACCEPT LOGIC ---
-                        if (
-                            data.type === 'ptt' && 
-                            user.ptt_auto_accept_ids?.includes(data.callerId)
-                        ) {
-                            console.log("[PTT] Auto-accepting PTT request from trusted user");
-                            // Set incoming call temporarily for reference
-                            setIncomingCall(callSession);
-                            // Trigger accept logic immediately
-                            if (!isAutoAccepting.current) {
-                                isAutoAccepting.current = true;
-                                setTimeout(() => {
-                                    acceptCall(callSession); // Pass session explicitly to avoid state race
-                                    isAutoAccepting.current = false;
-                                }, 100);
-                            }
-                        } else {
-                            setIncomingCall(callSession);
-                            setCallStatus('incoming');
-                        }
+                        setIncomingCall(callSession);
+                        setCallStatus('incoming');
                     }
                 }
                 
@@ -128,18 +106,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [user]);
 
-    const startCall = async (calleeId: string, type: 'audio' | 'video' | 'ptt') => {
+    const startCall = async (calleeId: string, type: 'audio' | 'video') => {
         if (!user) return;
         
         try {
             const stream = await webRTCService.setupLocalMedia(type === 'video');
             setLocalStream(stream);
             setCallStatus('outgoing');
-            
-            // For PTT, start muted
-            if (type === 'ptt') {
-                webRTCService.toggleAudio(false);
-            }
 
             webRTCService.createPeerConnection((stream) => {
                 setRemoteStream(stream);
@@ -148,7 +121,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const callId = await webRTCService.createCall(user.user_id, calleeId, type);
             
             // Trigger Push Notification for the call
-            notificationService.triggerCallNotification(calleeId, callId, user.username, type as any);
+            notificationService.triggerCallNotification(calleeId, callId, user.username, type);
             
             const newCall: CallSession = {
                 call_id: callId,
@@ -193,34 +166,29 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    const acceptCall = async (explicitSession?: CallSession) => {
-        const session = explicitSession || incomingCall;
-        if (!session || !user) return;
+    const acceptCall = async () => {
+        if (!incomingCall || !user) return;
         
         try {
-            const stream = await webRTCService.setupLocalMedia(session.type === 'video');
+            const stream = await webRTCService.setupLocalMedia(incomingCall.type === 'video');
             setLocalStream(stream);
-            
-            // If PTT, mute immediately upon answer (Listen mode)
-            if (session.type === 'ptt') {
-                webRTCService.toggleAudio(false);
-            }
 
             webRTCService.createPeerConnection((stream) => {
                 setRemoteStream(stream);
             });
 
             // Update State BEFORE async DB write to prevent "removed" listener from killing the call
-            const activeSession = { ...session, status: 'connected' as const };
+            // because DB write changes status from 'offering' to 'connected'
+            const activeSession = { ...incomingCall, status: 'connected' as const };
             setActiveCall(activeSession);
             setIncomingCall(null); 
             setCallStatus('connected');
             
             // Perform DB negotiation
-            await webRTCService.answerCall(session.call_id);
+            await webRTCService.answerCall(incomingCall.call_id);
 
             // Listen for end
-            onSnapshot(doc(db, 'calls', session.call_id), (snap) => {
+            onSnapshot(doc(db, 'calls', incomingCall.call_id), (snap) => {
                 const data = snap.data();
                 if (data?.status === 'ended') {
                     endCall(false);
@@ -256,7 +224,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  currentCall.calleeId,
                  currentCall.call_id,
                  user.username,
-                 currentCall.type as any
+                 currentCall.type
              );
         }
         
@@ -273,7 +241,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setRemoteStream(null);
         setIsMuted(false);
         setIsVideoOff(false);
-        isAutoAccepting.current = false;
     };
 
     const toggleMute = () => {
@@ -333,8 +300,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isVideoOff
         }}>
             {children}
-            {/* CallOverlay only handles standard audio/video calls. PTT has its own UI. */}
-            {(activeCall?.type !== 'ptt' && incomingCall?.type !== 'ptt') && <CallOverlay />}
+            <CallOverlay />
             <AlertModal 
                 isOpen={!!alertError} 
                 onClose={() => setAlertError(null)} 
