@@ -37,6 +37,18 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
 
+    // Refs to access latest state inside onSnapshot closures
+    const incomingCallRef = useRef<CallSession | null>(null);
+    const callStatusRef = useRef<string>('idle');
+
+    useEffect(() => {
+        incomingCallRef.current = incomingCall;
+    }, [incomingCall]);
+
+    useEffect(() => {
+        callStatusRef.current = callStatus;
+    }, [callStatus]);
+
     // Listen for incoming calls
     useEffect(() => {
         if (!user) return;
@@ -53,15 +65,27 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     const data = change.doc.data() as any;
                     // Ignore old calls (> 1 min)
                     if (Date.now() - data.timestamp < 60000) {
-                        setIncomingCall({ ...data, call_id: change.doc.id });
+                        const callSession = { ...data, call_id: change.doc.id };
+                        setIncomingCall(callSession);
                         setCallStatus('incoming');
+                    }
+                }
+                
+                // Handle caller cancelling the call
+                if (change.type === 'removed') {
+                    const removedId = change.doc.id;
+                    // If the removed call matches our current incoming call
+                    if (incomingCallRef.current && incomingCallRef.current.call_id === removedId) {
+                        // Only stop ringing if we haven't answered (status is still incoming)
+                        if (callStatusRef.current === 'incoming') {
+                            setIncomingCall(null);
+                            setCallStatus('idle');
+                        }
                     }
                 }
             });
         }, (error) => {
             console.error("Error listening for incoming calls:", error);
-            // This usually happens if permissions are missing. 
-            // We suppress the crash but the feature won't work until rules are fixed.
         });
 
         return () => unsubscribe();
@@ -111,7 +135,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }, (error) => {
                 console.error("Error listening to call updates:", error);
-                // If we lose permission or connection, end call gracefully locally
                 endCall(false); 
                 alert("Call failed: Permission denied or connection lost.");
             });
@@ -146,10 +169,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setRemoteStream(stream);
             });
 
-            await webRTCService.answerCall(incomingCall.call_id);
-            setActiveCall(incomingCall);
-            setIncomingCall(null);
+            // Update State BEFORE async DB write to prevent "removed" listener from killing the call
+            // because DB write changes status from 'offering' to 'connected'
+            const activeSession = { ...incomingCall, status: 'connected' as const };
+            setActiveCall(activeSession);
+            setIncomingCall(null); 
             setCallStatus('connected');
+            
+            // Perform DB negotiation
+            await webRTCService.answerCall(incomingCall.call_id);
 
             // Listen for end
             onSnapshot(doc(db, 'calls', incomingCall.call_id), (snap) => {
@@ -213,9 +241,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const flipCamera = async () => {
-        // Simple implementation: stop current video track, get new one with opposite facing mode
-        // Note: Replacing tracks in WebRTC without renegotiation is tricky. 
-        // For simple P2P, create a new stream and replaceTrack usually works.
         if (webRTCService.peerConnection && localStream) {
             const currentTrack = localStream.getVideoTracks()[0];
             const currentMode = currentTrack.getSettings().facingMode;
@@ -231,7 +256,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 sender.replaceTrack(newTrack);
                 localStream.removeTrack(currentTrack);
                 localStream.addTrack(newTrack);
-                // Force update state to re-render local video
                 setLocalStream(new MediaStream(localStream.getTracks())); 
             }
         }
