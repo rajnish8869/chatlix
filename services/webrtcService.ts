@@ -185,10 +185,28 @@ export class WebRTCService {
         this.remoteStream = null;
 
         if (callId) {
-             // In a real app, use a Cloud Function or separate cleanup logic
-             // to avoid permissions issues if the other user already deleted it.
              try {
-                 await updateDoc(doc(db, 'calls', callId), { status: 'ended' });
+                 const callRef = doc(db, 'calls', callId);
+                 const snap = await getDoc(callRef);
+                 if (snap.exists()) {
+                     const data = snap.data();
+                     // If call isn't already marked as ended/rejected, close it and calc duration
+                     if (data.status !== 'ended' && data.status !== 'rejected') {
+                         const endedAt = Date.now();
+                         let duration = 0;
+                         if (data.status === 'connected') {
+                             duration = Math.floor((endedAt - data.timestamp) / 1000);
+                         }
+                         await updateDoc(callRef, { 
+                             status: 'ended',
+                             endedAt,
+                             duration
+                         });
+                     } else if (!data.endedAt) {
+                         // Update endedAt if missing
+                         await updateDoc(callRef, { endedAt: Date.now() });
+                     }
+                 }
              } catch(e) {
                  // ignore
              }

@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
-import { Chat, Message, AppSettings, User, ApiResponse, Wallpaper } from '../types';
+import { Chat, Message, AppSettings, User, ApiResponse, Wallpaper, CallSession } from '../types';
 import { useAuth } from './AuthContext';
 import { chatService } from '../services/chatService';
 import { databaseService } from '../services/databaseService';
@@ -34,6 +34,7 @@ interface QueueItem {
 interface DataContextType {
   chats: Chat[];
   messages: Record<string, Message[]>;
+  callHistory: CallSession[];
   settings: AppSettings;
   syncing: boolean;
   isOffline: boolean;
@@ -72,6 +73,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [contacts, setContacts] = useState<User[]>([]);
   const [rawFirestoreUsers, setRawFirestoreUsers] = useState<User[]>([]);
   const [rtdbPresence, setRtdbPresence] = useState<Record<string, any>>({});
+  const [callHistory, setCallHistory] = useState<CallSession[]>([]);
 
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -87,6 +89,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loadingHistory, setLoadingHistory] = useState<Record<string, boolean>>({});
 
   const chatsUnsub = useRef<UnsubscribeFunc | null>(null);
+  const callsUnsub = useRef<UnsubscribeFunc | null>(null);
   const contactsUnsub = useRef<UnsubscribeFunc | null>(null);
   const presenceUnsub = useRef<UnsubscribeFunc | null>(null);
   const messageUnsubs = useRef<Record<string, UnsubscribeFunc>>({});
@@ -198,12 +201,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!user) {
         setChats([]);
+        setCallHistory([]);
         setContacts([]);
         setRawFirestoreUsers([]);
         setRtdbPresence({});
         setTypingStatusState({});
         groupKeysCache.current = {};
         if (chatsUnsub.current) chatsUnsub.current();
+        if (callsUnsub.current) callsUnsub.current();
         if (contactsUnsub.current) contactsUnsub.current();
         if (presenceUnsub.current) presenceUnsub.current();
         Object.values(typingUnsubs.current).forEach((unsub: any) => {
@@ -240,19 +245,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         });
     }) as UnsubscribeFunc;
+    
+    // 2. Subscribe to Call History
+    callsUnsub.current = chatService.subscribeToCallHistory(user.user_id, (history) => {
+        setCallHistory(history);
+    }) as UnsubscribeFunc;
 
-    // 2. Subscribe to Users
+    // 3. Subscribe to Users
     contactsUnsub.current = chatService.subscribeToUsers(user.user_id, (users) => {
         setRawFirestoreUsers(users);
     }) as UnsubscribeFunc;
 
-    // 3. Subscribe to Global Presence
+    // 4. Subscribe to Global Presence
     presenceUnsub.current = chatService.subscribeToGlobalPresence((presenceMap) => {
         setRtdbPresence(presenceMap);
     }) as unknown as UnsubscribeFunc;
 
     return () => {
         if (chatsUnsub.current) chatsUnsub.current();
+        if (callsUnsub.current) callsUnsub.current();
         if (contactsUnsub.current) contactsUnsub.current();
         if (presenceUnsub.current) presenceUnsub.current();
         Object.values(messageUnsubs.current).forEach(unsub => {
@@ -737,7 +748,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <DataContext.Provider value={{ 
-        chats, messages, settings, syncing, isOffline, contacts, typingStatus,
+        chats, messages, callHistory, settings, syncing, isOffline, contacts, typingStatus,
         refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, sendAudio, retryFailedMessages, 
         createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
         deleteChats, deleteMessages, getMessage,

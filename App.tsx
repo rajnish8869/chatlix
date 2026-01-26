@@ -12,6 +12,7 @@ import ChatDetail from './pages/ChatDetail';
 import ChatInfo from './pages/ChatInfo';
 import Settings from './pages/Settings';
 import NewChat from './pages/NewChat';
+import CallList from './pages/CallList';
 import { BottomNav } from './components/AndroidUI';
 import { App as CapacitorApp } from '@capacitor/app';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -64,7 +65,7 @@ const SplashScreen: React.FC = () => (
 const AppLayout: React.FC = () => {
   const { user, isLoading } = useAuth();
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<'chats' | 'settings'>('chats');
+  const [activeTab, setActiveTab] = useState<'chats' | 'settings' | 'calls'>('chats');
   const navigate = useNavigate();
 
   if (isLoading) {
@@ -76,19 +77,27 @@ const AppLayout: React.FC = () => {
   }
 
   // Helper to sync tab state with navigation
-  const handleTabChange = (tab: 'chats' | 'settings') => {
+  const handleTabChange = (tab: 'chats' | 'settings' | 'calls') => {
     setActiveTab(tab);
     if (tab === 'chats') navigate('/');
+    if (tab === 'calls') navigate('/calls');
     if (tab === 'settings') navigate('/settings');
   };
 
-  const showBottomNav = location.pathname === '/' || location.pathname === '/settings';
+  const getActiveTab = () => {
+      if (location.pathname === '/calls') return 'calls';
+      if (location.pathname === '/settings') return 'settings';
+      return 'chats';
+  };
+
+  const showBottomNav = ['/', '/settings', '/calls'].includes(location.pathname);
 
   return (
     <div className="bg-background text-text-main h-full flex flex-col transition-colors duration-300 overflow-hidden">
       <div className="flex-1 flex flex-col relative overflow-hidden min-h-0">
         <Routes>
           <Route path="/" element={<ChatList />} />
+          <Route path="/calls" element={<CallList />} />
           <Route path="/new-chat" element={<NewChat />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/chat/:chatId" element={<ChatDetail />} />
@@ -98,7 +107,7 @@ const AppLayout: React.FC = () => {
       </div>
       
       {showBottomNav && (
-        <BottomNav activeTab={location.pathname === '/settings' ? 'settings' : 'chats'} onTabChange={handleTabChange} />
+        <BottomNav activeTab={getActiveTab()} onTabChange={handleTabChange} />
       )}
     </div>
   );

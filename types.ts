@@ -64,6 +64,8 @@ export interface CallSession {
     offer?: any;
     answer?: any;
     timestamp: number;
+    endedAt?: number;
+    duration?: number;
 }
 
 export interface AppSettings {

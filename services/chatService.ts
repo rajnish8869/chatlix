@@ -3,7 +3,8 @@
 
 
 
-import { User, Chat, Message, AppSettings, ApiResponse, LogEvent, Wallpaper } from '../types';
+
+import { User, Chat, Message, AppSettings, ApiResponse, LogEvent, Wallpaper, CallSession } from '../types';
 import { 
     collection, 
     doc, 
@@ -20,7 +21,8 @@ import {
     arrayRemove,
     arrayUnion,
     orderBy,
-    deleteField
+    deleteField,
+    or
 } from 'firebase/firestore';
 import { 
     signInWithEmailAndPassword, 
@@ -785,6 +787,25 @@ export const chatService = {
           } else {
               callback([]);
           }
+      });
+  },
+
+  // --- CALLS ---
+
+  subscribeToCallHistory: (userId: string, callback: (calls: CallSession[]) => void) => {
+      const q = query(
+          collection(db, 'calls'),
+          or(
+              where('callerId', '==', userId),
+              where('calleeId', '==', userId)
+          ),
+          orderBy('timestamp', 'desc'),
+          limit(50)
+      );
+
+      return onSnapshot(q, (snapshot) => {
+          const calls = snapshot.docs.map(doc => ({ call_id: doc.id, ...doc.data() } as CallSession));
+          callback(calls);
       });
   },
 
