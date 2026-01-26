@@ -5,6 +5,7 @@ import { useData } from "../context/DataContext";
 import { useTheme, Theme } from "../context/ThemeContext";
 import { useSecurity } from "../context/SecurityContext";
 import { TopBar, Button, Icons, Input, Avatar } from "../components/AndroidUI";
+import { notificationService } from "../services/notificationService";
 
 const Settings: React.FC = () => {
   const { user, logout, updateName, toggleGroupChats, updateProfilePicture } = useAuth();
@@ -54,6 +55,20 @@ const Settings: React.FC = () => {
               if(fileInputRef.current) fileInputRef.current.value = "";
           }
       }
+  };
+
+  const handleTestNotification = async () => {
+      if (!user) return;
+      alert("Sending test notification in 5 seconds... Please close the app or lock your screen now.");
+      
+      setTimeout(async () => {
+          await notificationService.triggerNotification(
+              user.user_id,
+              "test_chat",
+              user.username, // Sender Name
+              false
+          );
+      }, 5000);
   };
 
   const areGroupsEnabled = user?.enable_groups ?? true;
@@ -224,6 +239,24 @@ const Settings: React.FC = () => {
                   className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${areGroupsEnabled ? "translate-x-7" : "translate-x-1"}`}
                 />
               </div>
+            </div>
+            
+            {/* DEBUG BUTTON */}
+            <div 
+              onClick={handleTestNotification}
+              className="p-5 flex justify-between items-center cursor-pointer hover:bg-surface-highlight/30 transition-colors border-t border-white/5"
+            >
+                <div className="flex flex-col gap-1.5">
+                    <span className="font-bold text-lg text-text-main">
+                        Test Notification
+                    </span>
+                    <span className="text-xs text-text-sub opacity-70">
+                        Simulate an incoming message (5s delay)
+                    </span>
+                </div>
+                <div className="p-2 bg-primary/10 rounded-full text-primary">
+                    <Icons.Send className="w-5 h-5" />
+                </div>
             </div>
           </div>
         </div>
