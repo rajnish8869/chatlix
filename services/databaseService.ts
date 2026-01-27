@@ -199,8 +199,18 @@ export class DatabaseService {
         }
 
         if (msgs.length === 0) return;
-        for (const msg of msgs) {
-            await this.saveMessage(msg);
+
+        try {
+            await this.db.beginTransaction();
+            const query = `INSERT OR REPLACE INTO messages (message_id, chat_id, timestamp, json_data) VALUES (?, ?, ?, ?)`;
+            for (const msg of msgs) {
+                await this.db.run(query, 
+                    [msg.message_id, msg.chat_id, msg.timestamp, JSON.stringify(msg)]);
+            }
+            await this.db.commitTransaction();
+        } catch (e) {
+            console.error("Bulk save messages failed, rolling back", e);
+            try { await this.db.rollbackTransaction(); } catch (rbErr) {}
         }
     }
 
