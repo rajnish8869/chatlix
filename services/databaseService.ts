@@ -67,13 +67,21 @@ export class DatabaseService {
                 );
             `);
 
+            // 6. Full Text Search Index
+            await this.db.execute(`
+                CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts4(
+                    message_id,
+                    chat_id,
+                    content
+                );
+            `);
+
             console.log("SQLite Database Initialized");
 
             // Migration: Check for localStorage theme and move to SQLite
             const theme = localStorage.getItem('chatlix_theme');
             if (theme) {
                 await this.setKv('chatlix_theme', theme);
-                // localStorage.removeItem('chatlix_theme'); // Optional: keep as backup
             }
 
         } catch (e) {
@@ -161,6 +169,9 @@ export class DatabaseService {
         const placeholders = chatIds.map(() => '?').join(',');
         await this.db.run(`DELETE FROM chats WHERE chat_id IN (${placeholders})`, chatIds);
         await this.db.run(`DELETE FROM messages WHERE chat_id IN (${placeholders})`, chatIds);
+        
+        // Also cleanup FTS
+        await this.db.execute(`DELETE FROM messages_fts WHERE chat_id IN (${placeholders})`);
     }
 
     // --- MESSAGES ---
@@ -217,6 +228,47 @@ export class DatabaseService {
         if (messageIds.length === 0) return;
         const placeholders = messageIds.map(() => '?').join(',');
         await this.db.run(`DELETE FROM messages WHERE message_id IN (${placeholders})`, messageIds);
+        
+        // Cleanup FTS
+        for (const id of messageIds) {
+             await this.db.run(`DELETE FROM messages_fts WHERE message_id = ?`, [id]);
+        }
+    }
+
+    // --- FTS SEARCH ---
+    async indexMessage(messageId: string, chatId: string, content: string) {
+        if (!this.db) return;
+        try {
+             // Delete existing entry if any to handle updates
+             await this.db.run(`DELETE FROM messages_fts WHERE message_id = ?`, [messageId]);
+             await this.db.run(`INSERT INTO messages_fts (message_id, chat_id, content) VALUES (?, ?, ?)`, [messageId, chatId, content]);
+        } catch(e) { 
+            console.error("FTS Index failed", e); 
+        }
+    }
+
+    async searchMessages(query: string): Promise<{message: Message, match: string}[]> {
+         if (!this.db) return [];
+         
+         const q = `*${query}*`; // Wildcard search
+         try {
+             const res = await this.db.query(`
+                SELECT m.json_data, f.content
+                FROM messages_fts f
+                JOIN messages m ON f.message_id = m.message_id
+                WHERE f.content MATCH ?
+                ORDER BY m.timestamp DESC
+                LIMIT 50
+             `, [q]);
+             
+             return (res.values || []).map(row => ({
+                 message: JSON.parse(row.json_data),
+                 match: row.content
+             }));
+         } catch(e) {
+             console.error("FTS Search failed", e);
+             return [];
+         }
     }
 
     // --- QUEUE ---

@@ -128,7 +128,7 @@ const MessageContent = ({
 
   useEffect(() => {
     if (msg.type === "encrypted") {
-      decryptFn(msg.chat_id, msg.message, msg.sender_id).then((decryptedText: string) => {
+      decryptFn(msg.chat_id, msg.message, msg.sender_id, msg.message_id).then((decryptedText: string) => {
           setText(decryptedText);
       });
     } else {
@@ -669,6 +669,7 @@ const ChatDetail: React.FC = () => {
             chatId!,
             replyingTo.message,
             replyingTo.sender_id,
+            replyingTo.message_id
           );
           if (isMounted) setReplyPreview(text);
         } catch (e) {
@@ -925,6 +926,7 @@ const ChatDetail: React.FC = () => {
               chatId,
               activeMessage.message,
               activeMessage.sender_id,
+              activeMessage.message_id
             );
           } catch (e) {
             console.error("Failed to decrypt for copy", e);

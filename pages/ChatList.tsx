@@ -6,6 +6,7 @@ import { FAB, Icons, ConfirmationModal, Avatar, ScrollDownFab } from "../compone
 import { useNavigate } from "react-router-dom";
 import { Chat, Message } from "../types";
 import { Virtuoso } from "react-virtuoso";
+import { Capacitor } from '@capacitor/core';
 
 // Extracted MessagePreview component
 const MessagePreview = React.memo(({
@@ -19,7 +20,7 @@ const MessagePreview = React.memo(({
     chatId: string,
     isHighlighted: boolean,
     snippet?: string,
-    decryptContent: (chatId: string, content: string, senderId: string) => Promise<string>
+    decryptContent: (chatId: string, content: string, senderId: string, messageId?: string) => Promise<string>
 }) => {
     const [text, setText] = useState<string>("");
 
@@ -46,10 +47,8 @@ const MessagePreview = React.memo(({
 
         if (message.type === 'encrypted') {
             let isMounted = true;
-            // Use a flag to check if we already have the correct text to avoid flicker?
-            // React handles state updates batching.
             
-            decryptContent(chatId, message.message, message.sender_id)
+            decryptContent(chatId, message.message, message.sender_id, message.message_id)
                 .then(decrypted => {
                     if (isMounted) setText(decrypted);
                 })
@@ -63,7 +62,6 @@ const MessagePreview = React.memo(({
         setText(message.message);
 
     }, [message?.message_id, message?.type, isHighlighted, snippet]); 
-    // Excluding decryptContent and chatId (assuming chatId doesn't change for a message_id) to avoid re-runs.
 
     if (isHighlighted) {
         return (
@@ -136,6 +134,7 @@ const ChatList: React.FC = () => {
     decryptContent,
     deleteChats,
     typingStatus,
+    searchGlobalMessages
   } = useData();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -176,70 +175,91 @@ const ChatList: React.FC = () => {
       const results: ListItem[] = [];
       const newDecrypted: Record<string, string> = {};
 
+      // 1. Chat Name Search (Always in-memory)
       for (const chat of chats) {
         const chatName = getChatName(chat).toLowerCase();
-        const isNameMatch = chatName.includes(query);
-        let hasMessageMatch = false;
-
-        const localMsgs = messages[chat.chat_id] || [];
-        const candidates = [...localMsgs];
-
-        if (
-          chat.last_message &&
-          !localMsgs.some(
-            (m) => m.message_id === chat.last_message!.message_id,
-          )
-        ) {
-          candidates.push(chat.last_message);
+        if (chatName.includes(query)) {
+           results.push({ type: 'chat', chat, id: chat.chat_id });
         }
+      }
 
-        candidates.sort(
-          (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-        );
+      // 2. Message Search
+      if (Capacitor.isNativePlatform()) {
+          // Native SQLite Search (Scalable)
+          const sqlResults = await searchGlobalMessages(query);
+          
+          for (const res of sqlResults) {
+             const chat = chats.find(c => c.chat_id === res.message.chat_id);
+             if (chat) {
+                 // Check uniqueness to avoid duplicates from chat name match?
+                 // Usually search results list messages under chats.
+                 // Here we push message items.
+                 results.push({
+                     type: 'message',
+                     chat,
+                     message: res.message,
+                     snippet: res.snippet,
+                     id: `${chat.chat_id}_${res.message.message_id}`
+                 });
+             }
+          }
 
-        for (const m of candidates) {
-          let text = m.message;
-          if (m.type === "image") {
-            text = "image";
-          } else if (m.type === "encrypted") {
-            if (decryptedPreviews[m.message_id]) {
-              text = decryptedPreviews[m.message_id];
-            } else if (newDecrypted[m.message_id]) {
-              text = newDecrypted[m.message_id];
-            } else {
-              try {
-                text = await decryptContent(
-                  chat.chat_id,
-                  m.message,
-                  m.sender_id,
-                );
-                newDecrypted[m.message_id] = text;
-              } catch (e) {
-                text = "";
+      } else {
+          // Web Fallback (Iterate loaded messages)
+          // Note: This only searches what is currently loaded in memory state `messages`
+          for (const chat of chats) {
+            const localMsgs = messages[chat.chat_id] || [];
+            const candidates = [...localMsgs];
+
+            if (
+              chat.last_message &&
+              !localMsgs.some(
+                (m) => m.message_id === chat.last_message!.message_id,
+              )
+            ) {
+              candidates.push(chat.last_message);
+            }
+
+            candidates.sort(
+              (a, b) =>
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+            );
+
+            for (const m of candidates) {
+              let text = m.message;
+              if (m.type === "image") {
+                text = "image";
+              } else if (m.type === "encrypted") {
+                if (decryptedPreviews[m.message_id]) {
+                  text = decryptedPreviews[m.message_id];
+                } else if (newDecrypted[m.message_id]) {
+                  text = newDecrypted[m.message_id];
+                } else {
+                  try {
+                    text = await decryptContent(
+                      chat.chat_id,
+                      m.message,
+                      m.sender_id,
+                      m.message_id
+                    );
+                    newDecrypted[m.message_id] = text;
+                  } catch (e) {
+                    text = "";
+                  }
+                }
+              }
+
+              if (text && text.toLowerCase().includes(query)) {
+                results.push({
+                  type: "message",
+                  chat: chat,
+                  message: m,
+                  snippet: text,
+                  id: `${chat.chat_id}_${m.message_id}`,
+                });
               }
             }
           }
-
-          if (text && text.toLowerCase().includes(query)) {
-            hasMessageMatch = true;
-            results.push({
-              type: "message",
-              chat: chat,
-              message: m,
-              snippet: text,
-              id: `${chat.chat_id}_${m.message_id}`,
-            });
-          }
-        }
-
-        if (isNameMatch && !hasMessageMatch) {
-          results.push({
-            type: "chat",
-            chat: chat,
-            id: chat.chat_id,
-          });
-        }
       }
 
       if (Object.keys(newDecrypted).length > 0) {
@@ -252,7 +272,7 @@ const ChatList: React.FC = () => {
 
     const debounce = setTimeout(runSearch, 500);
     return () => clearTimeout(debounce);
-  }, [searchQuery, chats, messages, decryptContent]);
+  }, [searchQuery, chats, messages, decryptContent, searchGlobalMessages]);
 
   const getLastMessage = (chat: Chat): Message | undefined => {
     const localMsgs = messages[chat.chat_id];

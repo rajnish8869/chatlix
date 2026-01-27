@@ -17,6 +17,7 @@ import { SecureStorage } from '../utils/storage';
 import { doc, getDoc } from 'firebase/firestore'; 
 import { db } from '../services/firebase'; 
 import { notificationService } from '../services/notificationService';
+import { Capacitor } from '@capacitor/core';
 
 // Type alias for unsubscribe function
 type UnsubscribeFunc = () => void;
@@ -53,7 +54,8 @@ interface DataContextType {
   loadContacts: () => Promise<void>;
   retryFailedMessages: () => void;
   markChatAsRead: (chatId: string) => Promise<void>;
-  decryptContent: (chatId: string, content: string, senderId: string) => Promise<string>;
+  decryptContent: (chatId: string, content: string, senderId: string, messageId?: string) => Promise<string>;
+  searchGlobalMessages: (query: string) => Promise<{message: Message, snippet: string}[]>;
   deleteChats: (chatIds: string[]) => Promise<void>;
   deleteMessages: (chatId: string, messageIds: string[]) => Promise<void>;
   getMessage: (chatId: string, messageId: string) => Promise<ApiResponse<Message>>;
@@ -362,37 +364,55 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   }, [user, getSharedKey]);
 
-  const decryptContent = useCallback(async (chatId: string, content: string, senderId: string): Promise<string> => {
+  const decryptContent = useCallback(async (chatId: string, content: string, senderId: string, messageId?: string): Promise<string> => {
       const chat = chatsRef.current.find(c => c.chat_id === chatId);
       if (!chat) return content;
 
+      let result = content;
+
       if (chat.type === 'group') {
-          if (!chat.encrypted_keys || !chat.key_issuer_id) return content;
-          
-          try {
-             const groupKey = await loadGroupKey(chatId);
-             if (groupKey) {
-                 return await decryptMessage(content, groupKey);
-             }
-             return "🔒 Decryption Failed";
-          } catch (e) {
-             return "🔒 Error";
+          if (chat.encrypted_keys && chat.key_issuer_id) {
+            try {
+                const groupKey = await loadGroupKey(chatId);
+                if (groupKey) {
+                    result = await decryptMessage(content, groupKey);
+                } else {
+                    result = "🔒 Decryption Failed";
+                }
+            } catch (e) {
+                result = "🔒 Error";
+            }
           }
-      } 
-      
-      const otherId = chat.participants.find(p => p !== user?.user_id);
-      
-      if (otherId) {
-          const key = await getSharedKey(otherId);
-          if (key) return await decryptMessage(content, key);
-      } 
-      else if (chat.participants.includes(user?.user_id || '')) {
-          const key = await getSharedKey(user?.user_id || '');
-          if (key) return await decryptMessage(content, key);
+      } else {
+        const otherId = chat.participants.find(p => p !== user?.user_id);
+        if (otherId) {
+            const key = await getSharedKey(otherId);
+            if (key) result = await decryptMessage(content, key);
+        } 
+        else if (chat.participants.includes(user?.user_id || '')) {
+            const key = await getSharedKey(user?.user_id || '');
+            if (key) result = await decryptMessage(content, key);
+        } else {
+            result = "🔒 Encrypted Message";
+        }
+      }
+
+      // Index the decrypted content in SQLite FTS
+      if (messageId && result && !result.startsWith("🔒") && Capacitor.isNativePlatform()) {
+          // Fire and forget
+          databaseService.indexMessage(messageId, chatId, result);
       }
       
-      return "🔒 Encrypted Message";
+      return result;
   }, [user, getSharedKey, loadGroupKey]);
+
+  const searchGlobalMessages = async (query: string): Promise<{message: Message, snippet: string}[]> => {
+      if (Capacitor.isNativePlatform()) {
+          const results = await databaseService.searchMessages(query);
+          return results.map(r => ({ message: r.message, snippet: r.match }));
+      }
+      return []; // Fallback for web left to UI component logic or handled empty
+  };
 
   const loadContacts = useCallback(async () => {
   }, []);
@@ -575,6 +595,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Optimistic Update: UI + DB
     setMessages(prev => ({ ...prev, [chatId]: [...(prev[chatId]||[]), optimisticMsg] }));
     await databaseService.saveMessage(optimisticMsg);
+    
+    // Optimistic FTS Indexing (Use original text since we know what we sent)
+    if (Capacitor.isNativePlatform()) {
+         databaseService.indexMessage(tempId, chatId, text);
+    }
 
     const queuePayload = {
         id: tempId,
@@ -771,7 +796,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         chats, messages, callHistory, settings, syncing, isOffline, contacts, typingStatus,
         refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, sendAudio, retryFailedMessages, 
         createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
-        deleteChats, deleteMessages, getMessage,
+        deleteChats, deleteMessages, getMessage, searchGlobalMessages,
         updateGroupInfo, addGroupMember, removeGroupMember,
         blockUser, unblockUser,
         setWallpaper, uploadWallpaper
