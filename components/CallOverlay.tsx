@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useCall } from '../context/CallContext';
 import { Avatar, Icons, FAB } from './AndroidUI';
-import { useData } from '../context/DataContext';
+import { useChatStore } from '../store/chatStore';
 
 export const CallOverlay: React.FC = () => {
     const { 
@@ -20,7 +20,7 @@ export const CallOverlay: React.FC = () => {
         isVideoOff
     } = useCall();
     
-    const { contacts } = useData();
+    const contacts = useChatStore(state => state.contacts);
 
     const localVideoRef = useRef<HTMLVideoElement>(null);
     const remoteVideoRef = useRef<HTMLVideoElement>(null);

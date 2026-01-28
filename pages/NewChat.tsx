@@ -1,8 +1,8 @@
-
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
+import { useChatStore } from "../store/chatStore";
 import {
   TopBar,
   Icons,
@@ -13,7 +13,8 @@ import {
 } from "../components/AndroidUI";
 
 const NewChat: React.FC = () => {
-  const { contacts, loadContacts, createChat } = useData();
+  const { loadContacts, createChat } = useData();
+  const contacts = useChatStore(state => state.contacts);
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);

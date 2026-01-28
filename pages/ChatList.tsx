@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { Chat, Message } from "../types";
 import { Virtuoso } from "react-virtuoso";
 import { Capacitor } from '@capacitor/core';
+import { useChatStore } from "../store/chatStore";
 
 // Extracted MessagePreview component
 const MessagePreview = React.memo(({
@@ -126,16 +127,19 @@ type ListItem =
 
 const ChatList: React.FC = () => {
   const {
-    chats: allChats,
     refreshChats,
-    messages,
-    contacts,
     loadContacts,
     decryptContent,
     deleteChats,
-    typingStatus,
     searchGlobalMessages
   } = useData();
+  
+  // Use Zustand Selectors
+  const chats = useChatStore(state => state.chats);
+  const messages = useChatStore(state => state.messages);
+  const contacts = useChatStore(state => state.contacts);
+  const typingStatus = useChatStore(state => state.typingStatus);
+
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -153,9 +157,6 @@ const ChatList: React.FC = () => {
 
   const [searchResults, setSearchResults] = useState<ListItem[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-
-  // Use all chats directly without filtering blocked users
-  const chats = allChats;
 
   useEffect(() => {
     refreshChats();

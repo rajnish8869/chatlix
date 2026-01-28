@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useData } from "../context/DataContext";
@@ -17,8 +16,10 @@ import {
 import { LinkPreview } from "../components/LinkPreview";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { Message } from "../types";
+import { useChatStore } from "../store/chatStore";
 
 const REACTIONS = ["❤️", "😂", "😮", "😢", "😡", "👍"];
+const EMPTY_MESSAGES: Message[] = [];
 
 const AudioPlayer = ({ src, isMe }: { src: string; isMe: boolean }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -451,25 +452,30 @@ const MessageItem = React.memo(
 
 const ChatDetail: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
+  
+  // Zustand State Selection
+  // Use stable selector pattern without inline useCallback to avoid dispatcher issues
+  const chatMessages = useChatStore(state => (chatId ? state.messages[chatId] || EMPTY_MESSAGES : EMPTY_MESSAGES));
+  const currentChat = useChatStore(state => state.chats.find(c => c.chat_id === chatId));
+  
+  const contacts = useChatStore(state => state.contacts);
+  const typingStatus = useChatStore(state => state.typingStatus);
+
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
   const { startCall } = useCall();
   const {
-    messages,
     loadMessages,
     loadMoreMessages,
     sendMessage,
     sendImage,
     sendAudio,
-    chats,
     markChatAsRead,
-    contacts,
     loadContacts,
     decryptContent,
     deleteMessages,
     toggleReaction,
-    typingStatus,
     setTyping,
     unblockUser
   } = useData();
@@ -518,12 +524,10 @@ const ChatDetail: React.FC = () => {
   const typingTimeoutRef = useRef<any>(null);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const chatMessages = chatId ? messages[chatId] || [] : [];
   const prevMessagesLengthRef = useRef(chatMessages.length);
-  const currentChat = chats.find((c) => c.chat_id === chatId);
 
   const otherUserId = currentChat?.participants.find(
-    (p) => p !== user?.user_id,
+    (p: string) => p !== user?.user_id,
   );
   const otherUser = contacts.find((c) => c.user_id === otherUserId);
   
@@ -582,7 +586,7 @@ const ChatDetail: React.FC = () => {
     if (!chatId || !user) return;
     markChatAsRead(chatId);
     const hasUnread = chatMessages.some(
-      (m) =>
+      (m: Message) =>
         String(m.sender_id) !== String(user.user_id) && m.status !== "read",
     );
     if (hasUnread) {
@@ -603,7 +607,7 @@ const ChatDetail: React.FC = () => {
     if (currentLength > previousLength) {
         if (showScrollFab) {
              const newMessages = chatMessages.slice(previousLength);
-             const incomingCount = newMessages.filter(m => String(m.sender_id) !== String(user?.user_id)).length;
+             const incomingCount = newMessages.filter((m: Message) => String(m.sender_id) !== String(user?.user_id)).length;
              if (incomingCount > 0) {
                  setUnreadCount(prev => prev + incomingCount);
              }
@@ -622,7 +626,7 @@ const ChatDetail: React.FC = () => {
   useEffect(() => {
     if (pendingScrollTo && chatId) {
       const index = chatMessages.findIndex(
-        (m) => m.message_id === pendingScrollTo.id,
+        (m: Message) => m.message_id === pendingScrollTo.id,
       );
 
       if (index !== -1) {

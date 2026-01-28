@@ -2,11 +2,14 @@ import React, { useEffect } from "react";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
 import { useCall } from "../context/CallContext";
+import { useChatStore } from "../store/chatStore";
 import { Icons, Avatar } from "../components/AndroidUI";
 import { Virtuoso } from "react-virtuoso";
 
 const CallList: React.FC = () => {
-    const { callHistory, contacts, loadContacts } = useData();
+    const { loadContacts } = useData();
+    const callHistory = useChatStore(state => state.callHistory);
+    const contacts = useChatStore(state => state.contacts);
     const { user } = useAuth();
     const { startCall } = useCall();
 

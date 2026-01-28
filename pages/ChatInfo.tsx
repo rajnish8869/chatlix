@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useData } from "../context/DataContext";
 import { useAuth } from "../context/AuthContext";
+import { useChatStore } from "../store/chatStore";
 import { TopBar, Icons, Avatar, ConfirmationModal, BottomSheet, Input, AlertModal } from "../components/AndroidUI";
 import { User, Wallpaper } from "../types";
 
@@ -26,8 +27,6 @@ const ChatInfo: React.FC = () => {
   const { chatId } = useParams<{ chatId: string }>();
   const navigate = useNavigate();
   const { 
-      chats, 
-      contacts, 
       loadContacts, 
       updateGroupInfo, 
       addGroupMember, 
@@ -38,6 +37,8 @@ const ChatInfo: React.FC = () => {
       setWallpaper,
       uploadWallpaper
   } = useData();
+  const chats = useChatStore(state => state.chats);
+  const contacts = useChatStore(state => state.contacts);
   const { user } = useAuth();
   
   const currentChat = chats.find((c) => c.chat_id === chatId);

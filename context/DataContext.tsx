@@ -1,10 +1,9 @@
 
-import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, useRef } from 'react';
 import { Chat, Message, AppSettings, User, ApiResponse, Wallpaper, CallSession } from '../types';
 import { useAuth } from './AuthContext';
 import { chatService } from '../services/chatService';
 import { databaseService } from '../services/databaseService';
-import { DEFAULT_SETTINGS } from '../constants';
 import { 
     deriveSharedKey, 
     decryptMessage, 
@@ -18,30 +17,13 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase'; 
 import { notificationService } from '../services/notificationService';
 import { Capacitor } from '@capacitor/core';
+import { useChatStore } from '../store/chatStore';
 
 // Type alias for unsubscribe function
 type UnsubscribeFunc = () => void;
 
-interface QueueItem {
-    id: string; // The generated message ID
-    chatId: string;
-    senderId: string;
-    content: string;
-    type: 'text' | 'encrypted' | 'image' | 'audio';
-    replyTo?: Message['replyTo'];
-    timestamp: number;
-    dbId?: number; // Internal SQLite ID for deletion
-}
-
 interface DataContextType {
-  chats: Chat[];
-  messages: Record<string, Message[]>;
-  callHistory: CallSession[];
-  settings: AppSettings;
-  syncing: boolean;
-  isOffline: boolean;
-  contacts: User[];
-  typingStatus: Record<string, string[]>; // chatId -> userIds[]
+  // Actions only - State is in Zustand
   refreshChats: () => Promise<void>;
   loadMessages: (chatId: string) => Promise<void>;
   loadMoreMessages: (chatId: string) => Promise<void>;
@@ -72,24 +54,24 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [contacts, setContacts] = useState<User[]>([]);
-  const [rawFirestoreUsers, setRawFirestoreUsers] = useState<User[]>([]);
-  const [rtdbPresence, setRtdbPresence] = useState<Record<string, any>>({});
-  const [callHistory, setCallHistory] = useState<CallSession[]>([]);
+  
+  // Access store actions via selector to avoid re-renders or direct getState usage in effects
+  const setChats = useChatStore(s => s.setChats);
+  const setContacts = useChatStore(s => s.setContacts);
+  const setCallHistory = useChatStore(s => s.setCallHistory);
+  const setTypingStatus = useChatStore(s => s.setTypingStatus);
+  const setMessages = useChatStore(s => s.setMessages);
+  const updateMessages = useChatStore(s => s.updateMessages);
+  const setIsOffline = useChatStore(s => s.setIsOffline);
+  const setQueue = useChatStore(s => s.setQueue);
+  const addQueueItem = useChatStore(s => s.addQueueItem);
+  const clearState = useChatStore(s => s.clearState);
+  const setSyncing = useChatStore(s => s.setSyncing);
 
-  const [messages, setMessages] = useState<Record<string, Message[]>>({});
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [syncing, setSyncing] = useState(false);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  
-  // Offline Queue
-  const [queue, setQueue] = useState<QueueItem[]>([]);
-  
-  // Typing Status State
-  const [typingStatus, setTypingStatusState] = useState<Record<string, string[]>>({});
-  
-  const [loadingHistory, setLoadingHistory] = useState<Record<string, boolean>>({});
+  // Local state for non-shared UI logic
+  const [rawFirestoreUsers, setRawFirestoreUsers] = React.useState<User[]>([]);
+  const [rtdbPresence, setRtdbPresence] = React.useState<Record<string, any>>({});
+  const [loadingHistory, setLoadingHistory] = React.useState<Record<string, boolean>>({});
 
   const chatsUnsub = useRef<UnsubscribeFunc | null>(null);
   const callsUnsub = useRef<UnsubscribeFunc | null>(null);
@@ -101,20 +83,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sharedKeysCache = useRef<Record<string, { key: CryptoKey, pubKeyStr: string }>>({});
   const groupKeysCache = useRef<Record<string, CryptoKey>>({});
 
-  // Ref to hold chats to allow stable callbacks without closure staleness or constant re-renders
-  const chatsRef = useRef<Chat[]>(chats);
-  const contactsRef = useRef<User[]>(contacts);
-  const rawUsersRef = useRef<User[]>(rawFirestoreUsers);
-
-  useEffect(() => { chatsRef.current = chats; }, [chats]);
-  useEffect(() => { contactsRef.current = contacts; }, [contacts]);
-  useEffect(() => { rawUsersRef.current = rawFirestoreUsers; }, [rawFirestoreUsers]);
-
   // 1. Load Queue from SQLite
   useEffect(() => {
       const loadQueue = async () => {
           const dbQueue = await databaseService.getQueue();
-          const mappedQueue: QueueItem[] = dbQueue.map(item => ({
+          const mappedQueue = dbQueue.map(item => ({
               ...item.payload,
               dbId: item.id
           }));
@@ -124,6 +97,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const processQueue = useCallback(async () => {
+      const queue = useChatStore.getState().queue;
       if (queue.length === 0 || !navigator.onLine) return;
       
       const currentQueue = [...queue];
@@ -147,7 +121,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
       }
       setQueue(newQueue);
-  }, [queue]);
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -170,20 +144,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [processQueue]);
 
   // Sync Typing Listeners
+  // We need to access chats to subscribe, so we subscribe to the store's chats
   useEffect(() => {
-      chats.forEach(chat => {
-          if (!typingUnsubs.current[chat.chat_id]) {
-              typingUnsubs.current[chat.chat_id] = chatService.subscribeToChatTyping(chat.chat_id, (userIds) => {
-                  const blocked = user?.blocked_users || [];
-                  const filteredIds = userIds.filter(id => !blocked.includes(id));
-                  setTypingStatusState(prev => ({
-                      ...prev,
-                      [chat.chat_id]: filteredIds
-                  }));
-              });
-          }
+      const unsub = useChatStore.subscribe((state) => {
+          state.chats.forEach(chat => {
+              if (!typingUnsubs.current[chat.chat_id]) {
+                  typingUnsubs.current[chat.chat_id] = chatService.subscribeToChatTyping(chat.chat_id, (userIds) => {
+                      const blocked = user?.blocked_users || [];
+                      const filteredIds = userIds.filter(id => !blocked.includes(id));
+                      setTypingStatus(chat.chat_id, filteredIds);
+                  });
+              }
+          });
       });
-  }, [chats, user?.blocked_users]); 
+      return () => unsub();
+  }, [user?.blocked_users]); 
 
   // Combine Firestore Profiles + RTDB Presence
   useEffect(() => {
@@ -212,12 +187,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (!user) {
-        setChats([]);
-        setCallHistory([]);
-        setContacts([]);
+        clearState();
         setRawFirestoreUsers([]);
         setRtdbPresence({});
-        setTypingStatusState({});
         groupKeysCache.current = {};
         if (chatsUnsub.current) chatsUnsub.current();
         if (callsUnsub.current) callsUnsub.current();
@@ -298,12 +270,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           targetPubKey = user.publicKey || '';
       } 
       else {
-          const contact = contactsRef.current.find(c => c.user_id === otherUserId);
+          // Access store directly for contacts to avoid stale closures
+          const currentContacts = useChatStore.getState().contacts;
+          const contact = currentContacts.find(c => c.user_id === otherUserId);
           if (contact) {
               targetPubKey = contact.publicKey || '';
           } else {
               // Try to find in raw users or fetch
-              const raw = rawUsersRef.current.find(u => u.user_id === otherUserId);
+              const raw = rawFirestoreUsers.find(u => u.user_id === otherUserId);
               if (raw?.publicKey) {
                   targetPubKey = raw.publicKey;
               } else {
@@ -332,13 +306,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Key Derivation Failed", e);
           return null;
       }
-  }, [user]);
+  }, [user, rawFirestoreUsers]);
 
   const loadGroupKey = useCallback(async (chatId: string): Promise<CryptoKey | null> => {
       // 1. Check Cache
       if (groupKeysCache.current[chatId]) return groupKeysCache.current[chatId];
       
-      const chat = chatsRef.current.find(c => c.chat_id === chatId);
+      const currentChats = useChatStore.getState().chats;
+      const chat = currentChats.find(c => c.chat_id === chatId);
       if (!chat || chat.type !== 'group' || !chat.encrypted_keys || !chat.key_issuer_id) return null;
 
       try {
@@ -365,7 +340,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, getSharedKey]);
 
   const decryptContent = useCallback(async (chatId: string, content: string, senderId: string, messageId?: string): Promise<string> => {
-      const chat = chatsRef.current.find(c => c.chat_id === chatId);
+      const currentChats = useChatStore.getState().chats;
+      const chat = currentChats.find(c => c.chat_id === chatId);
       if (!chat) return content;
 
       let result = content;
@@ -411,7 +387,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const results = await databaseService.searchMessages(query);
           return results.map(r => ({ message: r.message, snippet: r.match }));
       }
-      return []; // Fallback for web left to UI component logic or handled empty
+      return []; 
   };
 
   const loadContacts = useCallback(async () => {
@@ -432,8 +408,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (!myPrivKeyStr) return null;
         
+        const currentContacts = useChatStore.getState().contacts;
+
         for (const pId of allParticipants) {
-             let pUser = contacts.find(c => c.user_id === pId);
+             let pUser = currentContacts.find(c => c.user_id === pId);
              if (pId === user.user_id) pUser = user;
              
              if (!pUser && pId !== user.user_id) {
@@ -457,7 +435,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadMessages = useCallback(async (chatId: string) => {
     // 1. Load from SQLite first
     const localMsgs = await databaseService.getMessages(chatId, 50);
-    setMessages(prev => ({ ...prev, [chatId]: localMsgs }));
+    setMessages(chatId, localMsgs);
 
     if (messageUnsubs.current[chatId]) return;
 
@@ -469,8 +447,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             databaseService.deleteMessages(removedIds);
         }
 
-        setMessages(prev => {
-            const currentMsgs = prev[chatId] || [];
+        updateMessages(chatId, (currentMsgs) => {
             let filteredMsgs = currentMsgs;
             if (removedIds && removedIds.length > 0) {
                  filteredMsgs = currentMsgs.filter(m => !removedIds.includes(m.message_id));
@@ -483,7 +460,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const merged = Array.from(msgMap.values()).sort((a: Message, b: Message) => 
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             );
-            return { ...prev, [chatId]: merged };
+            return merged;
         });
     }) as UnsubscribeFunc;
   }, [user]); 
@@ -491,8 +468,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadMoreMessages = async (chatId: string) => {
       if (loadingHistory[chatId]) return;
       
-      const currentMsgs = messages[chatId];
-      if (!currentMsgs || currentMsgs.length === 0) return;
+      const currentMsgs = useChatStore.getState().messages[chatId] || [];
+      if (currentMsgs.length === 0) return;
 
       const oldestMsg = currentMsgs[0];
       setLoadingHistory(prev => ({ ...prev, [chatId]: true }));
@@ -504,10 +481,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (localHistory.length >= 20) {
               // Found enough in DB
-              setMessages(prev => ({
-                  ...prev,
-                  [chatId]: [...localHistory, ...prev[chatId]]
-              }));
+              updateMessages(chatId, (prev) => [...localHistory, ...prev]);
           } else {
               // 2. Fetch from Network
               const res = await chatService.fetchHistory(chatId, oldestMsg.timestamp);
@@ -524,10 +498,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
                   );
 
-                  setMessages(prev => ({
-                      ...prev,
-                      [chatId]: [...finalHistory, ...prev[chatId]]
-                  }));
+                  updateMessages(chatId, (prev) => [...finalHistory, ...prev]);
               }
           }
       } catch (e) {
@@ -549,8 +520,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendMessage = async (chatId: string, text: string, replyTo?: Message['replyTo']) => {
     if (!user || !text.trim()) return;
     
-    // ... Encryption Logic (same as before) ...
+    const chats = useChatStore.getState().chats;
     const chat = chats.find(c => c.chat_id === chatId);
+    const contacts = useChatStore.getState().contacts;
+
     if (chat && chat.type === 'private') {
          const otherId = chat.participants.find(p => p !== user.user_id);
          if (otherId && user.blocked_users?.includes(otherId)) return;
@@ -593,7 +566,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     // Optimistic Update: UI + DB
-    setMessages(prev => ({ ...prev, [chatId]: [...(prev[chatId]||[]), optimisticMsg] }));
+    updateMessages(chatId, (prev) => [...prev, optimisticMsg]);
     await databaseService.saveMessage(optimisticMsg);
     
     // Optimistic FTS Indexing (Use original text since we know what we sent)
@@ -614,8 +587,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!navigator.onLine) {
         // Add to SQLite Queue
         await databaseService.addToQueue("SEND_MESSAGE", queuePayload);
-        // Add to local state queue for UI reflection if needed
-        setQueue(prev => [...prev, queuePayload as any]);
+        addQueueItem(queuePayload);
         return;
     }
 
@@ -626,7 +598,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (chat) {
             // Determine recipients
             const recipients = chat.participants.filter(pid => pid !== user.user_id);
-            // In a real scenario, you might loop or send a batch request
             recipients.forEach(pid => {
                 notificationService.triggerNotification(
                     pid, 
@@ -639,7 +610,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     } catch (e) {
         await databaseService.addToQueue("SEND_MESSAGE", queuePayload);
-        setQueue(prev => [...prev, queuePayload as any]);
+        addQueueItem(queuePayload);
     }
   };
 
@@ -705,6 +676,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addGroupMember = async (chatId: string, newUserId: string) => {
       if (!user) return;
+      const chats = useChatStore.getState().chats;
       const chat = chats.find(c => c.chat_id === chatId);
       if (!chat || chat.type !== 'group' || !chat.encrypted_keys) return;
 
@@ -730,6 +702,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const removeGroupMember = async (chatId: string, userIdToRemove: string) => {
       if (!user) return;
+      const chats = useChatStore.getState().chats;
       const chat = chats.find(c => c.chat_id === chatId);
       if (!chat || chat.type !== 'group') return;
 
@@ -741,9 +714,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const remainingParticipants = chat.participants.filter(p => p !== userIdToRemove);
       const newEncryptedKeys: Record<string, string> = {};
+      
+      const currentContacts = useChatStore.getState().contacts;
 
       for (const pId of remainingParticipants) {
-           let pUser = contacts.find(c => c.user_id === pId);
+           let pUser = currentContacts.find(c => c.user_id === pId);
            if (pId === user.user_id) pUser = user;
 
            if (!pUser && pId !== user.user_id) {
@@ -793,7 +768,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <DataContext.Provider value={{ 
-        chats, messages, callHistory, settings, syncing, isOffline, contacts, typingStatus,
         refreshChats, loadMessages, loadMoreMessages, sendMessage, sendImage, sendAudio, retryFailedMessages, 
         createChat, loadContacts, markChatAsRead, decryptContent, toggleReaction, setTyping,
         deleteChats, deleteMessages, getMessage, searchGlobalMessages,

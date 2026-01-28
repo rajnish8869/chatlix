@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
-import { useData } from "../context/DataContext";
+import { useChatStore } from "../store/chatStore";
 import { useTheme, Theme } from "../context/ThemeContext";
 import { useSecurity } from "../context/SecurityContext";
 import { TopBar, Button, Icons, Input, Avatar, AlertModal } from "../components/AndroidUI";
@@ -8,7 +8,7 @@ import { notificationService } from "../services/notificationService";
 
 const Settings: React.FC = () => {
   const { user, logout, updateName, toggleGroupChats, updateProfilePicture } = useAuth();
-  const { isOffline } = useData();
+  const isOffline = useChatStore(state => state.isOffline);
   const { theme, setTheme } = useTheme();
   const { isSupported, isBiometricEnabled, toggleBiometric } = useSecurity();
   const [loggingOut, setLoggingOut] = useState(false);
