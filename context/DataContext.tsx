@@ -102,8 +102,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const currentQueue = [...queue];
       const newQueue = [];
+      const failedChatIds = new Set<string>(); // Track blocked chats in this cycle
 
       for (const item of currentQueue) {
+          // 1. Check if this chat is already blocked by a previous failure
+          if (failedChatIds.has(item.chatId)) {
+              newQueue.push(item); // Keep in queue, maintain order
+              continue; // Skip send attempt
+          }
+
           try {
               await chatService.sendMessage(
                   item.chatId,
@@ -117,6 +124,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (item.dbId) await databaseService.removeFromQueue(item.dbId);
           } catch (e) {
               console.error("Failed to process queue item", item.id);
+              // 2. On Failure: Block this chat ID for the rest of the loop
+              failedChatIds.add(item.chatId);
               newQueue.push(item);
           }
       }
