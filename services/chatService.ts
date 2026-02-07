@@ -665,28 +665,40 @@ export const chatService = {
       const snapshot = await getDocs(q);
       if (snapshot.empty) return;
 
-      const batch = writeBatch(db);
       const chatRef = doc(db, 'chats', chatId);
       const chatSnap = await getDoc(chatRef);
       const lastMsgId = chatSnap.exists() ? chatSnap.data()?.last_message?.message_id : null;
       let updateChatLastMessage = false;
-      let count = 0;
+
+      const updates: any[] = [];
 
       snapshot.docs.forEach((docSnap) => {
-        if (docSnap.data().sender_id === userId) return;
-
-        batch.update(docSnap.ref, { status: 'delivered' });
+        if (docSnap.data().sender_id === userId) return; // Don't mark own messages
+        
+        updates.push(docSnap.ref);
         if (lastMsgId === docSnap.id) updateChatLastMessage = true;
-        count++;
       });
-      
-      if (count === 0) return;
 
-      if (updateChatLastMessage) {
-        batch.update(chatRef, { 'last_message.status': 'delivered' });
+      if (updates.length === 0) return;
+
+      // Process in chunks to respect Firestore 500 operation limit per batch
+      const BATCH_SIZE = 450;
+      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+          const batch = writeBatch(db);
+          const chunk = updates.slice(i, i + BATCH_SIZE);
+          
+          chunk.forEach(ref => {
+              batch.update(ref, { status: 'delivered' });
+          });
+
+          // If this is the last batch and we need to update the chat doc
+          if (i + BATCH_SIZE >= updates.length && updateChatLastMessage) {
+              batch.update(chatRef, { 'last_message.status': 'delivered' });
+          }
+
+          await batch.commit();
       }
 
-      await batch.commit();
     } catch (e) {
       console.error("markChatDelivered failed", e);
     }
@@ -702,28 +714,40 @@ export const chatService = {
       const snapshot = await getDocs(q);
       if (snapshot.empty) return;
 
-      const batch = writeBatch(db);
       const chatRef = doc(db, 'chats', chatId);
       const chatSnap = await getDoc(chatRef);
       const lastMsgId = chatSnap.exists() ? chatSnap.data()?.last_message?.message_id : null;
       let updateChatLastMessage = false;
-      let count = 0;
+
+      const updates: any[] = [];
 
       snapshot.docs.forEach((docSnap) => {
-        if (docSnap.data().sender_id === userId) return;
+        if (docSnap.data().sender_id === userId) return; // Don't mark own messages
 
-        batch.update(docSnap.ref, { status: 'read' });
+        updates.push(docSnap.ref);
         if (lastMsgId === docSnap.id) updateChatLastMessage = true;
-        count++;
       });
-      
-      if (count === 0) return;
 
-      if (updateChatLastMessage) {
-        batch.update(chatRef, { 'last_message.status': 'read' });
+      if (updates.length === 0) return;
+
+      // Process in chunks to respect Firestore 500 operation limit per batch
+      const BATCH_SIZE = 450;
+      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+          const batch = writeBatch(db);
+          const chunk = updates.slice(i, i + BATCH_SIZE);
+          
+          chunk.forEach(ref => {
+              batch.update(ref, { status: 'read' });
+          });
+
+          // If this is the last batch and we need to update the chat doc
+          if (i + BATCH_SIZE >= updates.length && updateChatLastMessage) {
+              batch.update(chatRef, { 'last_message.status': 'read' });
+          }
+
+          await batch.commit();
       }
 
-      await batch.commit();
     } catch (e) {
       console.error("markChatRead failed", e);
     }

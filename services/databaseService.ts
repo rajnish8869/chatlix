@@ -258,6 +258,11 @@ export class DatabaseService {
     }
 
     async searchMessages(query: string): Promise<{message: Message, match: string}[]> {
+         // FTS is strictly a native feature (SQLite). 
+         if (!Capacitor.isNativePlatform()) {
+             return [];
+         }
+
          if (!this.db) return [];
          
          const q = `*${query}*`; // Wildcard search

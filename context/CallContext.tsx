@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from '../services/firebase';
@@ -109,10 +110,18 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const startCall = async (calleeId: string, type: 'audio' | 'video') => {
         if (!user) return;
         
+        // Strict Guard: Prevent starting a call if already in one or calling
+        if (activeCall || callStatus !== 'idle') {
+            console.warn("Call already active, blocking startCall");
+            return;
+        }
+        
         try {
+            // Optimistic update to block UI immediately
+            setCallStatus('outgoing');
+
             const stream = await webRTCService.setupLocalMedia(type === 'video');
             setLocalStream(stream);
-            setCallStatus('outgoing');
 
             webRTCService.createPeerConnection((stream) => {
                 setRemoteStream(stream);
@@ -168,6 +177,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const acceptCall = async () => {
         if (!incomingCall || !user) return;
+        
+        // Guard against accepting if already connected
+        if (activeCall) {
+            console.warn("Already active in a call");
+            return;
+        }
         
         try {
             const stream = await webRTCService.setupLocalMedia(incomingCall.type === 'video');

@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { DatabaseProvider } from './context/DatabaseContext';
+import { DatabaseProvider, useDatabase } from './context/DatabaseContext';
 import { SecurityProvider } from './context/SecurityContext';
 import { CallProvider } from './context/CallContext';
 import Login from './pages/Login';
@@ -60,6 +61,15 @@ const SplashScreen: React.FC = () => (
     </div>
   </div>
 );
+
+// New Component to gate access based on DB readiness
+const DatabaseGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isReady } = useDatabase();
+  if (!isReady) {
+    return <SplashScreen />;
+  }
+  return <>{children}</>;
+};
 
 // Wrapper to handle layout logic that depends on hooks
 const AppLayout: React.FC = () => {
@@ -189,20 +199,22 @@ const SystemEventsHandler = () => {
 const App: React.FC = () => {
   return (
     <DatabaseProvider>
-      <AuthProvider>
-        <SecurityProvider>
-          <DataProvider>
-              <CallProvider>
-                <ThemeProvider>
-                  <HashRouter>
-                      <SystemEventsHandler />
-                      <AppLayout />
-                  </HashRouter>
-                </ThemeProvider>
-            </CallProvider>
-          </DataProvider>
-        </SecurityProvider>
-      </AuthProvider>
+      <DatabaseGuard>
+        <AuthProvider>
+          <SecurityProvider>
+            <DataProvider>
+                <CallProvider>
+                  <ThemeProvider>
+                    <HashRouter>
+                        <SystemEventsHandler />
+                        <AppLayout />
+                    </HashRouter>
+                  </ThemeProvider>
+              </CallProvider>
+            </DataProvider>
+          </SecurityProvider>
+        </AuthProvider>
+      </DatabaseGuard>
     </DatabaseProvider>
   );
 };

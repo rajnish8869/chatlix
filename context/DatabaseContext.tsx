@@ -34,17 +34,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     initDB();
   }, []);
 
-  if (!isReady) {
-      return (
-          <div className="fixed inset-0 bg-background flex items-center justify-center">
-              <div className="flex flex-col items-center gap-4">
-                 <div className="w-16 h-16 rounded-[24px] bg-primary animate-pulse" />
-                 <p className="text-text-sub font-bold animate-pulse">Initializing Database...</p>
-              </div>
-          </div>
-      );
-  }
-
   return (
     <DatabaseContext.Provider value={{ isReady }}>
       {children}

@@ -25,6 +25,15 @@ export class WebRTCService {
     constructor() {}
     
     async setupLocalMedia(video: boolean = false): Promise<MediaStream> {
+        // Cleanup existing stream if present to prevent race conditions
+        if (this.localStream) {
+            this.localStream.getTracks().forEach(track => {
+                track.stop();
+                track.enabled = false;
+            });
+            this.localStream = null;
+        }
+
         if (!navigator.mediaDevices?.getUserMedia) {
             throw new Error("Media devices API not supported");
         }
@@ -62,6 +71,13 @@ export class WebRTCService {
     }
 
     createPeerConnection(onTrack: (stream: MediaStream) => void) {
+        // Cleanup existing connection if present to prevent race conditions
+        if (this.peerConnection) {
+            console.warn("Closing existing PeerConnection before creating new one");
+            this.peerConnection.close();
+            this.peerConnection = null;
+        }
+
         this.peerConnection = new RTCPeerConnection(servers);
         this.remoteStream = new MediaStream();
 
@@ -114,7 +130,7 @@ export class WebRTCService {
         // Listen for Answer
         onSnapshot(callDocRef, (snapshot) => {
             const data = snapshot.data();
-            if (!this.peerConnection?.currentRemoteDescription && data?.answer) {
+            if (this.peerConnection && !this.peerConnection.currentRemoteDescription && data?.answer) {
                 const answerDescription = new RTCSessionDescription(data.answer);
                 this.peerConnection.setRemoteDescription(answerDescription);
             }
@@ -127,7 +143,7 @@ export class WebRTCService {
                      const data = change.doc.data();
                      if (data.type === 'callee' && this.peerConnection) {
                          const candidate = new RTCIceCandidate(data.candidate);
-                         this.peerConnection.addIceCandidate(candidate);
+                         this.peerConnection.addIceCandidate(candidate).catch(e => console.error("Error adding candidate", e));
                      }
                 }
             });
@@ -170,7 +186,7 @@ export class WebRTCService {
                      const data = change.doc.data();
                      if (data.type === 'caller' && this.peerConnection) {
                          const candidate = new RTCIceCandidate(data.candidate);
-                         this.peerConnection.addIceCandidate(candidate);
+                         this.peerConnection.addIceCandidate(candidate).catch(e => console.error("Error adding candidate", e));
                      }
                 }
             });
